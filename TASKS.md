@@ -13,6 +13,15 @@ Build two cooperating pieces:
 
 Use a local, authenticated bridge between the hook and extension. Keep a workspace file watcher as a limited fallback for edits the hook cannot identify; watcher events alone cannot prove that Codex caused a change. Validate hook availability in both Codex surfaces before promising exact attribution there.
 
+## Current implementation
+
+- [x] Add the portable CLI plugin manifest and `PostToolUse` hook for `apply_patch`.
+- [x] Parse patch destinations, restrict them to existing workspace files, and send versioned events through a private loopback bridge descriptor.
+- [x] Test patch parsing, path boundaries, descriptor permissions, and authenticated local delivery.
+- [ ] Verify real hook payloads and hook loading in both Codex surfaces.
+- [ ] Implement the VS Code listener and window-specific descriptor lifecycle.
+- [ ] Correlate shell and other write-capable tool edits without opening unrelated changes.
+
 ## Feature 1 — Project and packaging
 
 - [ ] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration.

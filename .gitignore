@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+out/
+dist/
+coverage/
+.vscode-test/
+*.tsbuildinfo
+*.vsix
