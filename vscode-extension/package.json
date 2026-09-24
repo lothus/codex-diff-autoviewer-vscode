@@ -1,0 +1,23 @@
+{
+  "name": "codex-auto-open",
+  "displayName": "Codex Auto Open",
+  "description": "Open files edited by Codex in the current VS Code window.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "engines": { "vscode": "^1.96.0" },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "extensionKind": ["workspace"],
+  "scripts": {
+    "compile": "tsc -p .",
+    "check": "tsc -p . --noEmit",
+    "test": "npm run compile && node --test out/bridge.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.96.0",
+    "typescript": "^5.7.0"
+  }
+}

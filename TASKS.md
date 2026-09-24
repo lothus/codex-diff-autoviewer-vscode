@@ -19,12 +19,12 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 - [x] Parse patch destinations, restrict them to existing workspace files, and send versioned events through a private loopback bridge descriptor.
 - [x] Test patch parsing, path boundaries, descriptor permissions, and authenticated local delivery.
 - [ ] Verify real hook payloads and hook loading in both Codex surfaces.
-- [ ] Implement the VS Code listener and window-specific descriptor lifecycle.
+- [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
 - [ ] Correlate shell and other write-capable tool edits without opening unrelated changes.
 
 ## Feature 1 — Project and packaging
 
-- [ ] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration.
+- [ ] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration. (Project, activation, and launch configuration are in place; commands and settings remain.)
 - [ ] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script; document the minimum supported Codex version.
 - [ ] Provide one setup flow that installs/enables the VS Code extension and Codex plugin, including hook trust review where required.
 - [ ] Document local development, packaging, installation, upgrade, and removal for both components.
@@ -44,11 +44,11 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 
 ## Feature 3 — Local hook-to-editor bridge
 
-- [ ] Start a loopback listener or equivalent local IPC endpoint in the VS Code extension; bind it to the current VS Code window/workspace.
-- [ ] Generate an ephemeral secret or token for the bridge and make it available to the hook without placing it in logs or the repository.
-- [ ] Define a small versioned event message with path, operation, session/turn identifier when available, and timestamp.
-- [ ] Validate authentication, message size, path scope, and stale events; fail quietly if VS Code is closed or the bridge is unavailable.
-- [ ] Support multiple VS Code windows and workspaces without opening a file in the wrong window.
+- [x] Start a loopback listener or equivalent local IPC endpoint in the VS Code extension; bind it to the current VS Code window/workspace.
+- [x] Generate an ephemeral secret or token for the bridge and make it available to the hook without placing it in logs or the repository.
+- [x] Define a small versioned event message with path, operation, session/turn identifier when available, and timestamp.
+- [x] Validate authentication, message size, path scope, and stale events; fail quietly if VS Code is closed or the bridge is unavailable.
+- [ ] Support multiple VS Code windows and workspaces without opening a file in the wrong window. (Per-window descriptors are implemented; VS Code window integration remains to be tested.)
 
 **Done when:** An edit from the correct Codex session reaches only the intended VS Code window.
 
