@@ -1,0 +1,8 @@
+src/**
+node_modules/**
+tsconfig.json
+package-lock.json
+.vscodeignore
+out/*.test.js
+out/*.test.js.map
+out/*.js.map

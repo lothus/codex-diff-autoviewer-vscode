@@ -21,14 +21,15 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 - [ ] Verify real hook payloads and hook loading in both Codex surfaces.
 - [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
 - [x] Add editor reveal settings, file filtering, deduplication, and per-turn burst limits.
+- [x] Add a local packaging and setup command for both components.
 - [ ] Correlate shell and other write-capable tool edits without opening unrelated changes.
 
 ## Feature 1 — Project and packaging
 
-- [ ] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration. (Project, activation, and launch configuration are in place; commands and settings remain.)
-- [ ] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script; document the minimum supported Codex version.
-- [ ] Provide one setup flow that installs/enables the VS Code extension and Codex plugin, including hook trust review where required.
-- [ ] Document local development, packaging, installation, upgrade, and removal for both components.
+- [x] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration.
+- [ ] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script; document the minimum supported Codex version. (The package is present; hook tests must establish the minimum.)
+- [x] Provide one local setup flow that installs the VS Code extension and Codex plugin, including hook trust review instructions.
+- [x] Document local development, packaging, installation, upgrade, and removal for both components.
 
 **Done when:** A fresh installation can enable both components without modifying the Codex VS Code extension itself.
 

@@ -8,7 +8,25 @@ This repository is an early implementation of the two-component design in [TASKS
 
 The hook exits silently when there is no bridge, when a path is outside the workspace, or when delivery fails. It does not print the bridge token or the payload. Shell commands and other write-capable tools are not yet correlated with edits, because their arguments and output do not reliably list changed files. The hook has not yet been validated against real `PostToolUse` payloads from the Codex CLI or IDE extension.
 
-The current development machine has Codex CLI 0.156.1. The minimum supported Codex version remains to be established with real hook tests; no minimum is claimed yet. Current [Codex hook documentation](https://learn.chatgpt.com/docs/hooks) describes the input fields and trust review, and the [plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) describes the portable manifest and hook registration.
+The packaging flow uses the plugin commands available in Codex CLI 0.156.1. This is the earliest version checked for those commands, not a verified minimum for hook delivery. Real CLI and IDE hook tests are still needed before setting a supported minimum. Current [Codex hook documentation](https://learn.chatgpt.com/docs/hooks) describes the input fields and trust review, and the [plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) describes the portable manifest and hook registration.
+
+## Install both components locally
+
+Prerequisites: Python 3.9+, Node.js 22+ and npm, VS Code's `code` command on `PATH`, and Codex CLI with `codex plugin` commands (checked with 0.156.1). From the repository root, run:
+
+```sh
+python3 scripts/setup_local.py install
+```
+
+The command runs `npm ci`, builds a VSIX in `dist/`, installs it into VS Code, and registers a dedicated local Codex marketplace at `~/.local/share/codex-auto-open/`. It installs a copied, versioned plugin from that catalog. Run the same command after pulling updates to rebuild and reinstall both pieces. The repository and other marketplaces are not changed by the setup command.
+
+Restart VS Code and Codex after installation. In Codex CLI, open `/hooks`, inspect the **codex-auto-open** `PostToolUse` hook, and trust it. Codex skips new or changed non-managed hooks until they are reviewed; an upgrade can require another review. Start a new integrated terminal in the VS Code window after restarting so it receives `CODEX_AUTO_OPEN_BRIDGE_FILE`. The extension needs an open local file workspace. To remove the local installation, run:
+
+```sh
+python3 scripts/setup_local.py remove
+```
+
+This removes the VS Code extension, Codex plugin, and the dedicated local marketplace. The packaged VSIX in `dist/` is a local build artifact. This flow has been packaged locally, but a fresh two-component installation and real Codex hook delivery have not yet been verified end to end.
 
 ## Bridge contract for the companion extension
 
@@ -59,7 +77,7 @@ Files under `.git`, `.venv`, `node_modules`, `out`, `dist`, `build`, `coverage`,
 
 Run `npm install` in `vscode-extension`, then open the repository root in VS Code and choose **Run Codex Auto Open** in the Run and Debug view. This compiles the extension and launches an Extension Development Host. Start a **new** integrated terminal in that host so it inherits the bridge descriptor. The extension only starts its bridge when at least one local file workspace folder is open.
 
-The Codex plugin must also be installed and its hook trusted. The exact install flow is pending real Codex CLI and IDE validation. Until then, the bridge can be exercised with `npm test` in `vscode-extension`; this tests authentication, scope, and descriptor cleanup but does not prove editor behavior.
+Install the Codex plugin with the local setup command above and trust its hook. Until real CLI and IDE hook validation, the bridge can be exercised with `npm test` in `vscode-extension`; this tests authentication, scope, and descriptor cleanup but does not prove editor behavior.
 
 To check editor behavior in the Extension Development Host, open a **new integrated terminal** and run `python3 scripts/smoke_edit.py` from the repository root. A new `auto-open-smoke/run-*/sample-1.txt` file should appear in a preview tab while the terminal keeps focus. Run `python3 scripts/smoke_edit.py --count 7` to check burst limiting: the default five-file limit should produce a **View files** notification for the other two files. Use **Codex Auto Open: Show Remaining Changed Files** from the Command Palette to choose them. Smoke-test files are ignored by Git and can be deleted after testing. This feeds a synthetic `PostToolUse` payload to the hook script and exercises its bridge delivery; it does not verify Codex plugin loading or attribution.
 
@@ -71,6 +89,6 @@ Run the hook tests with:
 python3 -m unittest discover -s tests -v
 ```
 
-The tests cover patch operations, path scope including symlinks, descriptor privacy, and an authenticated request to a local receiver. Plugin installation, hook trust review, and an end-to-end editor test remain to be documented after real Codex validation.
+The tests cover patch operations, path scope including symlinks, descriptor privacy, and an authenticated request to a local receiver. Plugin installation, hook trust review, and an end-to-end editor test remain to be verified with real Codex validation.
 
 Run `npm test` in `vscode-extension` for the listener, queue, and filtering tests. A VS Code integration test for actual tab and focus behavior remains to be implemented.

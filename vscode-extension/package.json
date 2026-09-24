@@ -5,11 +5,19 @@
   "version": "0.1.0",
   "publisher": "local",
   "private": true,
-  "engines": { "vscode": "^1.96.0" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onStartupFinished"],
-  "extensionKind": ["workspace"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
   "contributes": {
     "commands": [
       {
@@ -54,7 +62,9 @@
         },
         "codexAutoOpen.exclude": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional workspace-relative glob patterns for files to skip. Common generated directories are always skipped."
         }
@@ -64,11 +74,13 @@
   "scripts": {
     "compile": "tsc -p .",
     "check": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test out/*.test.js"
+    "test": "npm run compile && node --test out/*.test.js",
+    "package": "npm run compile && node -e \"require('fs').mkdirSync('../dist',{recursive:true})\" && vsce package --no-dependencies --allow-missing-repository --skip-license --out ../dist/codex-auto-open.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^4.0.0",
     "typescript": "^5.7.0"
   }
 }
