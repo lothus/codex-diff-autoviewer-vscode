@@ -124,6 +124,7 @@ export async function startBridge(
     try {
       await fs.writeFile(descriptorPath, JSON.stringify({
         version: 1, port: address.port, token, workspaceFolders: folders,
+        processId: process.pid,
       }), { mode: 0o600, flag: 'wx' });
     } catch (error) {
       await fs.rm(directory, { recursive: true, force: true });

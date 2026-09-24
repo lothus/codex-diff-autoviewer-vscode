@@ -25,6 +25,7 @@ class SetupLocalTests(unittest.TestCase):
             root = Path(temporary) / "catalog"
             commands = []
             with patch.object(setup_local, "marketplace_root", return_value=root), \
+                 patch.object(setup_local, "ide_hooks_path", return_value=Path(temporary) / "hooks.json"), \
                  patch.object(setup_local, "installed_marketplaces", return_value={}), \
                  patch.object(setup_local, "run", side_effect=lambda *args: commands.append(args)), \
                  patch.object(setup_local.shutil, "which", return_value="/usr/bin/tool"):
@@ -40,6 +41,23 @@ class SetupLocalTests(unittest.TestCase):
             self.assertEqual(commands[-2],
                              ("codex", "plugin", "add", "codex-auto-open@codex-auto-open-local"))
             self.assertEqual(commands[-1][0:2], ("code", "--install-extension"))
+            hooks = json.loads((Path(temporary) / "hooks.json").read_text())
+            self.assertEqual(len(hooks["hooks"]["PreToolUse"]), 1)
+            self.assertIn("--ide", hooks["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
+
+    def test_ide_hooks_preserve_user_entries_and_remove_only_own(self):
+        # Keep unrelated hook groups intact across installation and removal.
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "hooks.json"
+            original = {"description": "Personal hooks", "hooks": {
+                "PostToolUse": [{"matcher": "^other$", "hooks": [{"type": "command", "command": "true"}]}]}}
+            path.write_text(json.dumps(original))
+            with patch.object(setup_local, "ide_hooks_path", return_value=path):
+                setup_local.update_ide_hooks(Path(temporary) / "report_edit.py")
+                setup_local.update_ide_hooks()
+            self.assertEqual(json.loads(path.read_text())["hooks"]["PostToolUse"],
+                             original["hooks"]["PostToolUse"])
+            self.assertEqual(json.loads(path.read_text())["description"], "Personal hooks")
 
 
 if __name__ == "__main__":

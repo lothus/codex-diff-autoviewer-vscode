@@ -213,6 +213,41 @@ class ReportEditTests(unittest.TestCase):
             with patch.dict(os.environ, {"CODEX_AUTO_OPEN_BRIDGE_FILE": str(descriptor)}):
                 self.assertIsNone(report_edit.load_bridge())
 
+    def test_ide_bridge_requires_vscode_and_one_matching_window(self):
+        # Discover a private IDE bridge only when its workspace match is unique.
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            workspace = base / "workspace"
+            workspace.mkdir()
+            outside = base / "outside"
+            outside.mkdir()
+            def descriptor(index, process_id=None):
+                # Create one window descriptor with private directory permissions.
+                directory = base / f"codex-auto-open-{index}"
+                directory.mkdir(mode=0o700)
+                file = directory / "bridge.json"
+                file.write_text(json.dumps({"version": 1, "port": 1234,
+                                            "token": "t" * 32,
+                                            "processId": process_id or os.getpid(),
+                                            "workspaceFolders": [str(workspace)]}))
+                file.chmod(0o600)
+                return file
+            first = descriptor(1)
+            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
+                    patch.dict(os.environ, {"VSCODE_PID": "123"}, clear=True):
+                self.assertIsNone(report_edit.load_bridge(str(workspace), False))
+                self.assertIsNone(report_edit.load_bridge(str(outside), True))
+                self.assertEqual(report_edit.load_bridge(str(workspace), True)["descriptorPath"],
+                                 str(first))
+                descriptor(0, 999999999)
+                self.assertEqual(report_edit.load_bridge(str(workspace), True)["descriptorPath"],
+                                 str(first))
+                descriptor(2)
+                self.assertIsNone(report_edit.load_bridge(str(workspace), True))
+            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
+                    patch.dict(os.environ, {}, clear=True):
+                self.assertIsNone(report_edit.load_bridge(str(workspace), True))
+
 
 if __name__ == "__main__":
     unittest.main()

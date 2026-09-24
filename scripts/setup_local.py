@@ -4,7 +4,9 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NAME = "codex-auto-open"
 MARKETPLACE = "codex-auto-open-local"
 EXTENSION_ID = "local.codex-auto-open"
+IDE_HOOK_MARKER = "Codex Auto Open IDE bridge"
 
 
 def run(*command):
@@ -34,6 +37,54 @@ def installed_marketplaces():
     )
     return {item["name"]: Path(item["root"]).resolve()
             for item in json.loads(result.stdout)["marketplaces"]}
+
+
+def ide_hooks_path():
+    # Locate the user hook layer shared by Codex CLI and the IDE extension.
+    return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "hooks.json"
+
+
+def update_ide_hooks(script=None):
+    # Preserve unrelated user hooks while adding or removing our IDE-only handlers.
+    path = ide_hooks_path()
+    if script is None and not path.exists():
+        return
+    if path.is_symlink():
+        raise RuntimeError(f"Refusing to edit symlink: {path}")
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"hooks": {}}
+    if not isinstance(data, dict) or not isinstance(data.get("hooks"), dict):
+        raise RuntimeError(f"Unsupported hooks file: {path}")
+    for event in ("PreToolUse", "PostToolUse"):
+        groups = data["hooks"].get(event, [])
+        if not isinstance(groups, list):
+            raise RuntimeError(f"Unsupported {event} hooks in {path}")
+        data["hooks"][event] = [group for group in groups if not (
+            isinstance(group, dict) and isinstance(group.get("hooks"), list) and any(
+                isinstance(handler, dict) and handler.get("statusMessage") == IDE_HOOK_MARKER
+                for handler in group["hooks"]))]
+    if script is not None:
+        command = f"python3 {shlex.quote(str(script))} --ide"
+        matchers = {
+            "PreToolUse": "^Bash$",
+            "PostToolUse": "^apply_patch$|^Bash$|^mcp__.+__(?:write_file|edit_file|create_file|move_file|rename_file)$",
+        }
+        for event, matcher in matchers.items():
+            data["hooks"][event].append({
+                "matcher": matcher,
+                "hooks": [{"type": "command", "command": command,
+                           "timeout": 5 if event == "PreToolUse" else 3,
+                           "statusMessage": IDE_HOOK_MARKER}],
+            })
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".codex-auto-open-tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as stream:
+            os.chmod(temporary, 0o600)
+            json.dump(data, stream, indent=2)
+            stream.write("\n")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def install():
@@ -79,7 +130,8 @@ def install():
         run("codex", "plugin", "marketplace", "add", str(root))
     run("codex", "plugin", "add", f"{NAME}@{MARKETPLACE}")
     run("code", "--install-extension", str(ROOT / "dist" / f"{NAME}.vsix"), "--force")
-    print("Installed both components. Restart VS Code and Codex, then review the hook with /hooks.")
+    update_ide_hooks(target / "hooks" / "report_edit.py")
+    print("Installed both components. Restart VS Code and Codex, then review both hook sources with /hooks.")
 
 
 def remove():
@@ -92,6 +144,7 @@ def remove():
         run("codex", "plugin", "remove", f"{NAME}@{MARKETPLACE}")
         run("codex", "plugin", "marketplace", "remove", MARKETPLACE)
     run("code", "--uninstall-extension", EXTENSION_ID)
+    update_ide_hooks()
     if (root / ".agents" / "plugins" / "marketplace.json").is_file():
         shutil.rmtree(root)
     print("Removed both components.")

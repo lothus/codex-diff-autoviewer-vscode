@@ -1,6 +1,6 @@
 # Codex Auto Open for VS Code
 
-This repository is an early implementation of the two-component design in [TASKS.md](TASKS.md). The CLI-side Codex plugin and a local VS Code extension listener are implemented. Real Codex hook delivery in the CLI and IDE extension has not yet been verified.
+This repository is an early implementation of the design in [TASKS.md](TASKS.md). The CLI plugin, a standalone user hook for the IDE, and a local VS Code listener are implemented. Real hook delivery and editor behavior in both Codex surfaces still need live validation.
 
 ## CLI plugin
 
@@ -8,7 +8,7 @@ This repository is an early implementation of the two-component design in [TASKS
 
 For Bash, the pre-hook records file size, timestamps, and inode in a private per-call snapshot. The post-hook compares that snapshot with current files and reports creates, modifications, and moves. Each scan stops after 5,000 files or 2,000 directories and skips common generated directories. When a scan exceeds either limit, that call produces no Bash edit events. The snapshot is removed after the post-hook. Bash output and command text are never treated as a reliable changed-file list. A separate process writing a file during the same Bash call can still be attributed to Codex; this is a known limit of time-based correlation. No workspace-wide watcher runs by default.
 
-The hook exits silently when there is no bridge, when a path is outside the workspace, or when delivery fails. It does not print the bridge token or payload. The [official hook contract](https://learn.chatgpt.com/docs/hooks) specifies the `PreToolUse` and `PostToolUse` fields and tool coverage. Actual payloads and hook delivery from Codex CLI and the IDE extension still need to be captured and validated end to end.
+The hook exits silently when there is no bridge, when a path is outside the workspace, or when delivery fails. It does not print the bridge token or payload. The [official hook contract](https://learn.chatgpt.com/docs/hooks) specifies the `PreToolUse` and `PostToolUse` fields and tool coverage. The [official plugin documentation](https://learn.chatgpt.com/docs/plugins) says plugins are unavailable in the IDE extension, so setup also registers IDE-only handlers in the user `hooks.json`. Actual payloads and hook delivery from both surfaces still need live validation.
 
 The packaging flow uses the plugin commands available in Codex CLI 0.156.1. This is the earliest version checked for those commands, not a verified minimum for hook delivery. Real CLI and IDE hook tests are still needed before setting a supported minimum. Current [Codex hook documentation](https://learn.chatgpt.com/docs/hooks) describes the input fields and trust review, and the [plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) describes the portable manifest and hook registration.
 
@@ -20,25 +20,26 @@ Prerequisites: Python 3.9+, Node.js 22+ and npm, VS Code's `code` command on `PA
 python3 scripts/setup_local.py install
 ```
 
-The command runs `npm ci`, builds a VSIX in `dist/`, installs it into VS Code, and registers a dedicated local Codex marketplace at `~/.local/share/codex-auto-open/`. It installs a copied, versioned plugin from that catalog. Run the same command after pulling updates to rebuild and reinstall both pieces. The repository and other marketplaces are not changed by the setup command.
+The command runs `npm ci`, builds a VSIX in `dist/`, installs it into VS Code, and registers a dedicated local Codex marketplace at `~/.local/share/codex-auto-open/`. It installs a copied, versioned plugin from that catalog and adds IDE-only handlers to `$CODEX_HOME/hooks.json` (or `~/.codex/hooks.json`). Existing unrelated hook groups are preserved. Run the same command after pulling updates to rebuild and reinstall.
 
-Restart VS Code and Codex after installation. In Codex CLI, open `/hooks`, inspect the **codex-auto-open** `PostToolUse` hook, and trust it. Codex skips new or changed non-managed hooks until they are reviewed; an upgrade can require another review. Start a new integrated terminal in the VS Code window after restarting so it receives `CODEX_AUTO_OPEN_BRIDGE_FILE`. The extension needs an open local file workspace. To remove the local installation, run:
+Restart VS Code and Codex after installation. In Codex CLI, open `/hooks`, inspect the **codex-auto-open** plugin hooks and **Codex Auto Open IDE bridge** user hooks, and trust both sources. Codex skips new or changed non-managed hooks until reviewed; an upgrade can require another review. Start a new integrated terminal in the VS Code window after restarting so it receives `CODEX_AUTO_OPEN_BRIDGE_FILE`. The extension needs an open local file workspace. To remove the local installation, run:
 
 ```sh
 python3 scripts/setup_local.py remove
 ```
 
-This removes the VS Code extension, Codex plugin, and the dedicated local marketplace. The packaged VSIX in `dist/` is a local build artifact. This flow has been packaged locally, but a fresh two-component installation and real Codex hook delivery have not yet been verified end to end.
+This removes the VS Code extension, Codex plugin, IDE hook groups, and the dedicated local marketplace. The packaged VSIX in `dist/` is a local build artifact. A fresh installation and real Codex hook delivery have not yet been verified end to end.
 
 ## Bridge contract for the companion extension
 
-For each VS Code window, the extension creates a private JSON descriptor outside the repository and exposes its absolute path to new integrated terminals as `CODEX_AUTO_OPEN_BRIDGE_FILE`. A terminal outside VS Code has no descriptor and produces no event. On POSIX, the descriptor is a regular file owned by the current user with mode `0600`:
+For each VS Code window, the extension creates a private JSON descriptor outside the repository and exposes its absolute path to new integrated terminals as `CODEX_AUTO_OPEN_BRIDGE_FILE`. A terminal outside VS Code has no descriptor and produces no event. The standalone IDE hook looks for a private descriptor only when `VSCODE_PID` is present and exactly one window descriptor contains the Codex working directory. When two windows open the same workspace, the IDE hook declines to route the event; the CLI terminal still uses its own window descriptor. On POSIX, the descriptor is a regular file owned by the current user with mode `0600`:
 
 ```json
 {
   "version": 1,
   "port": 49152,
   "token": "a-random-secret-of-at-least-32-ascii-characters",
+  "processId": 12345,
   "workspaceFolders": ["/absolute/workspace/path"]
 }
 ```
@@ -57,6 +58,22 @@ The extension binds a listener to `127.0.0.1` on the specified port and accepts 
 ```
 
 Operations currently sent are `create`, `modify`, and `rename`. The listener independently verifies the token, event freshness, path scope, and file type before queuing a tab reveal. It rejects requests over 8 KiB and events older than 30 seconds. The descriptor is window-specific so each new integrated terminal reports to its owning window. Workspace changes rotate the token and descriptor; closing the window removes the descriptor. Existing terminals must be restarted after a workspace change. Remote VS Code development remains untested; the CLI and extension host must share a filesystem and loopback network namespace.
+
+## Feature 5 workflow checks
+
+The automated tests cover descriptor privacy, workspace boundaries, ambiguous IDE window selection, authenticated delivery, and queue behavior. They do not confirm that a particular Codex build launches user hooks from the IDE or that a tab becomes visible. To complete the live acceptance matrix, reinstall this build, restart VS Code, trust both hook sources in `/hooks`, and use a disposable local workspace:
+
+| Surface | Live checks | Expected result |
+| --- | --- | --- |
+| Codex IDE sidebar | Ask Codex to create one text file, modify an existing text file, edit several files, and edit the same file twice. | Changed files open in preview tabs; chat keeps focus; repeat edits do not duplicate tabs; the tab limit applies. |
+| Codex CLI in a new integrated terminal | Repeat the same four cases. Check that `CODEX_AUTO_OPEN_BRIDGE_FILE` is set in that terminal. | Tabs open in that VS Code window while terminal focus stays put. |
+| Codex CLI outside VS Code | Repeat one edit with `CODEX_AUTO_OPEN_BRIDGE_FILE` unset and no `VSCODE_PID`. | No tab opens. |
+| Both surfaces | Ask Codex to edit a file outside the open workspace. | No tab opens. |
+| Two VS Code windows | Open different workspaces and edit a file in each. Then open the same workspace in two windows and use the IDE sidebar. | Distinct workspaces route to their own window. Ambiguous same-workspace IDE events are ignored. |
+| Restart and reconnect | Restart a window, create a new integrated terminal, and repeat a single edit. | The new terminal uses the new descriptor; the old descriptor cannot deliver events. |
+| Remote SSH, WSL, container | Repeat only where both Codex and the companion extension run in the same filesystem and loopback network namespace. | Record each host combination separately; these are not yet supported claims. |
+
+The IDE hook's `VSCODE_PID` gate and user-hook loading need direct validation with the installed Codex IDE extension. If either assumption fails on a build, that build is unsupported until the bridge can identify the IDE session reliably. The plugin's CLI hook path remains separate and does not use IDE discovery.
 
 ## Editor behavior and settings
 

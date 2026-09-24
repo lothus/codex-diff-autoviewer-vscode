@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import tempfile
 import time
 from urllib import request
 
@@ -92,9 +93,8 @@ def explicit_targets(hook):
     return [(tool_input[key], operation) for key in keys if isinstance(tool_input.get(key), str)][:1]
 
 
-def load_bridge():
-    # Read only a private bridge descriptor named by the integrated terminal.
-    name = os.environ.get("CODEX_AUTO_OPEN_BRIDGE_FILE")
+def read_bridge(name):
+    # Validate one private bridge descriptor before using its address or token.
     if not name:
         return None
     try:
@@ -120,7 +120,40 @@ def load_bridge():
         isinstance(folder, str) and os.path.isabs(folder) for folder in folders
     ):
         return None
-    return descriptor
+    return {**descriptor, "descriptorPath": str(path)}
+
+
+def load_bridge(cwd=None, ide=False):
+    # Select the terminal's descriptor or one unambiguous IDE workspace bridge.
+    name = os.environ.get("CODEX_AUTO_OPEN_BRIDGE_FILE")
+    if name:
+        return read_bridge(name)
+    if not ide or not os.environ.get("VSCODE_PID") or not isinstance(cwd, str):
+        return None
+    try:
+        working = Path(cwd).resolve(strict=True)
+        candidates = []
+        for name in Path(tempfile.gettempdir()).glob("codex-auto-open-*/bridge.json"):
+            try:
+                directory = name.parent.stat()
+                if os.name == "posix" and (directory.st_uid != os.getuid() or directory.st_mode & 0o077):
+                    continue
+                descriptor = read_bridge(name)
+                process_id = descriptor.get("processId") if descriptor else None
+                if not isinstance(process_id, int) or isinstance(process_id, bool) or process_id < 1:
+                    continue
+                if os.name == "posix":
+                    os.kill(process_id, 0)
+            except (OSError, ValueError):
+                continue
+            if descriptor and any(working.is_relative_to(Path(folder).resolve(strict=True))
+                                  for folder in descriptor["workspaceFolders"]):
+                candidates.append(descriptor)
+                if len(candidates) > 1:
+                    return None
+        return candidates[0] if candidates else None
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 def scoped_regular_file(name, cwd, folders):
@@ -139,7 +172,7 @@ def scoped_regular_file(name, cwd, folders):
     return None
 
 
-def snapshot_path(hook):
+def snapshot_path(hook, descriptor=None):
     # Derive a private state path for one Bash tool invocation.
     session_id = hook.get("session_id")
     turn_id = hook.get("turn_id")
@@ -147,6 +180,8 @@ def snapshot_path(hook):
     tool_input = hook.get("tool_input")
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     descriptor_name = os.environ.get("CODEX_AUTO_OPEN_BRIDGE_FILE")
+    if descriptor_name is None and descriptor is not None:
+        descriptor_name = descriptor.get("descriptorPath")
     if not all(isinstance(value, str) and value for value in (
         session_id, turn_id, cwd, command, descriptor_name)):
         return None
@@ -212,7 +247,7 @@ def snapshot_changes(before, after):
 
 def save_snapshot(hook, descriptor):
     # Store the Bash pre-state in the private bridge directory.
-    destination = snapshot_path(hook)
+    destination = snapshot_path(hook, descriptor)
     if destination is None:
         return
     snapshot = workspace_snapshot(descriptor["workspaceFolders"])
@@ -233,7 +268,7 @@ def save_snapshot(hook, descriptor):
 
 def bash_changes(hook, descriptor):
     # Compare a completed Bash call with its matching pre-tool snapshot.
-    source = snapshot_path(hook)
+    source = snapshot_path(hook, descriptor)
     if source is None:
         return []
     try:
@@ -284,8 +319,11 @@ def main():
     tool_name = hook.get("tool_name")
     if event_name not in ("PreToolUse", "PostToolUse"):
         return
-    descriptor = load_bridge()
     cwd = hook.get("cwd")
+    ide = "--ide" in sys.argv[1:]
+    if ide and os.environ.get("CODEX_AUTO_OPEN_BRIDGE_FILE"):
+        return
+    descriptor = load_bridge(cwd, ide)
     if not descriptor or not isinstance(cwd, str) or not os.path.isabs(cwd):
         return
     if event_name == "PreToolUse":
