@@ -2,7 +2,7 @@
 
 ## Goal
 
-When Codex creates or modifies a file in the current VS Code workspace, open that file in a VS Code editor tab automatically. Support both Codex's VS Code extension and Codex CLI running in an integrated VS Code terminal. Opening should happen soon after the edit, without stealing focus from the Codex chat or terminal by default.
+When Codex creates or modifies a file in the current VS Code workspace, open that file in a permanent VS Code editor tab automatically and bring it forward for review. Support both Codex's VS Code extension and Codex CLI running in an integrated VS Code terminal. Opening should happen soon after the edit; users can configure focus preservation if they prefer to stay in Codex.
 
 ## Architecture decision
 
@@ -18,17 +18,19 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Add the portable CLI plugin manifest and `PostToolUse` hook for `apply_patch`.
 - [x] Parse patch destinations, restrict them to existing workspace files, and send versioned events through a private loopback bridge descriptor.
 - [x] Test patch parsing, path boundaries, descriptor permissions, and authenticated local delivery.
-- [ ] Verify real hook payloads and hook loading in both Codex surfaces.
+- [x] Verify that the local IDE loads the trusted user hook and delivers `apply_patch` edits. Its successful response has an `Exit code: 0` wrapper.
+- [ ] Verify real hook payloads and hook loading in Codex CLI and for the other supported write tools.
 - [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
 - [x] Add editor reveal settings, file filtering, deduplication, and per-turn burst limits.
 - [x] Add a local packaging and setup command for both components.
 - [x] Correlate Bash edits with bounded before/after snapshots and recognize structured write-tool destinations.
-- [x] Add IDE-only user-hook registration, private descriptor discovery, and stale process filtering; live IDE hook delivery remains unverified.
+- [x] Add IDE-only user-hook registration, private descriptor discovery, and stale process filtering; live local IDE edit delivery passed after trust review.
 
 ## Feature 1 — Project and packaging
 
 - [x] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration.
-- [ ] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script; document the minimum supported Codex version. (The package is present; hook tests must establish the minimum.)
+- [x] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script.
+- [ ] Establish and document the minimum supported Codex version after testing real hook delivery across versions.
 - [x] Provide one local setup flow that installs the VS Code extension, CLI plugin, and IDE user hook, including hook trust review instructions.
 - [x] Document local development, packaging, installation, upgrade, and removal for both components.
 
@@ -36,7 +38,8 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 
 ## Feature 2 — Detect Codex edits
 
-- [ ] Research and capture real `PostToolUse` payloads for `apply_patch`, shell commands, and other write-capable tools in the Codex IDE extension and CLI.
+- [x] Capture the successful `apply_patch` response format from a live local IDE hook invocation.
+- [ ] Capture real `PostToolUse` payloads for shell and other write-capable tools in the IDE, and for supported write tools in CLI.
 - [x] Parse explicit paths from patch and recognized structured write-tool input; never assume every shell command exposes its changed paths.
 - [x] For Bash calls, compare a bounded workspace snapshot around the tool execution.
 - [x] Handle create, modify, rename, and delete results; open only paths that exist as regular files after the operation.
@@ -58,8 +61,8 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 ## Feature 4 — Open files in the editor
 
 - [x] Use VS Code's document and editor APIs to reveal created or modified files.
-- [x] Default to opening a preview tab with `preserveFocus: true`; expose settings for focus behavior, preview versus pinned tabs, and reveal timing.
-- [x] Avoid reopening the active file or creating duplicate tabs for rapid edits.
+- [x] Default to permanent foreground tabs; expose settings for focus behavior, preview versus pinned tabs, and reveal timing.
+- [x] Bring background tabs forward, pin active preview tabs, and avoid duplicate tabs for rapid edits.
 - [x] Queue bursts and enforce a configurable per-turn tab limit; provide a concise notification or command to view any remaining changed files.
 - [x] Skip recognized binary files, generated/build directories, and paths matching user-configured exclusions.
 - [x] Handle missing files, inaccessible files, and editor API failures without interrupting Codex. (Remote workflows still require Feature 5 validation.)
@@ -71,11 +74,12 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Implement a standalone user-hook route for the IDE; preserve unrelated user hooks during install and removal.
 - [x] Select a private IDE bridge owned by a running process only for one matching local workspace; unit-test outside-workspace, stale-process, and ambiguous-window rejection.
 - [x] Document a workflow matrix for local IDE, integrated CLI, outside CLI, multiple windows, restart, and remote hosts in the README.
-- [ ] Test Codex's VS Code extension in a local workspace: new file, existing file, multiple files, and repeated edits.
+- [x] Test Codex's VS Code extension in a local workspace: new file, existing file, multiple files, and repeated edits. (Live tested on September 24, 2026 with permanent foreground tabs and no duplicate tab on repeat edits.)
 - [ ] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases.
 - [ ] Verify with real Codex processes that CLI sessions outside VS Code and edits outside the open workspace are ignored. Unit tests cover the gating and path checks.
-- [ ] Test multiple workspaces/windows and restart/reconnect behavior in VS Code; test remote SSH, WSL, and containers separately before claiming support.
-- [ ] Capture real hook payloads and confirm hook loading on supported Codex versions in both surfaces, including whether the IDE hook process receives `VSCODE_PID`.
+- [ ] Test multiple workspaces/windows and restart/reconnect behavior in VS Code; test remote SSH, WSL, and containers separately before claiming support. (One local IDE edit succeeded after a VS Code restart; stale-descriptor and multi-window behavior remain untested live.)
+- [x] Confirm the installed IDE hook receives `VSCODE_PID` and delivers `apply_patch` edits.
+- [ ] Confirm hook loading and payloads across supported Codex versions and in CLI.
 
 **Done when:** Both requested workflows pass the end-to-end acceptance tests on supported platforms.
 
@@ -83,9 +87,10 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 
 - [x] Add unit tests for path parsing, validation, deduplication, exclusions, and burst handling.
 - [ ] Add VS Code extension integration tests for opening behavior and focus preservation.
-- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow.
+- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow. (A manual local IDE smoke test passed; CLI and an automated repeatable test remain.)
 - [ ] Measure time from completed edit to visible tab and set an acceptable target for local workspaces.
-- [ ] Write a README with setup, settings, troubleshooting, privacy/security notes, and the known limits of watcher fallback.
+- [x] Document local setup, editor settings, bridge privacy/security, and the limits of change attribution without a workspace watcher.
+- [ ] Add focused troubleshooting steps for hook trust, bridge startup, and missing tabs.
 - [ ] Package and publish the VS Code extension and Codex plugin; verify clean install and upgrade paths.
 
 **Done when:** The release artifacts pass tests and a clean machine reproduces the expected behavior.
@@ -94,7 +99,7 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 
 1. With the companion extension and IDE user hook enabled, Codex creates `src/new.ts` from its VS Code extension; `src/new.ts` appears in an editor tab automatically.
 2. Codex CLI in an integrated VS Code terminal modifies `src/app.ts`; that file appears in an editor tab automatically.
-3. The Codex panel or terminal keeps keyboard focus under the default setting.
+3. The edited file becomes the active permanent tab under the default setting.
 4. Editing a file manually or running an unrelated build does not open new tabs in the default mode.
 5. Multi-file edits obey the tab limit, exclusions, and deduplication rules.
 6. Events from another workspace/window cannot open files in the current window.

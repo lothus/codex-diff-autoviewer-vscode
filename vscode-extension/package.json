@@ -31,12 +31,12 @@
       "properties": {
         "codexAutoOpen.preserveFocus": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Keep focus in Codex or the terminal when opening an edited file."
         },
         "codexAutoOpen.preview": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Open edited files as preview tabs rather than pinned tabs."
         },
         "codexAutoOpen.revealDelayMs": {

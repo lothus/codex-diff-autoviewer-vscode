@@ -37,19 +37,23 @@ def read_json_input():
 
 
 def successful_patch_response(response):
-    # Accept only the explicit success marker emitted by apply_patch.
+    # Accept successful patch output with or without Codex's tool-result wrapper.
     if isinstance(response, str):
-        return response.startswith("Success.")
+        if response.startswith("Success."):
+            return True
+        header, marker, output = response.partition("\nOutput:\n")
+        return bool(marker and header.startswith("Exit code: 0\n") and
+                    output.startswith("Success."))
     if isinstance(response, dict):
         output = response.get("output")
         if isinstance(output, str):
-            return output.startswith("Success.")
+            return successful_patch_response(output)
         content = response.get("content")
         if isinstance(content, list):
             return any(
                 isinstance(item, dict)
                 and isinstance(item.get("text"), str)
-                and item["text"].startswith("Success.")
+                and successful_patch_response(item["text"])
                 for item in content
             )
     return False

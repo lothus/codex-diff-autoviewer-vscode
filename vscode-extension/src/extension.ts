@@ -22,8 +22,8 @@ function settings(): QueueOptions & { preserveFocus: boolean; preview: boolean; 
     return Number.isInteger(value) ? Math.max(min, Math.min(max, value!)) : fallback;
   };
   return {
-    preserveFocus: config.get<boolean>('preserveFocus', true),
-    preview: config.get<boolean>('preview', true),
+    preserveFocus: config.get<boolean>('preserveFocus', false),
+    preview: config.get<boolean>('preview', false),
     revealDelayMs: number('revealDelayMs', 150, 0, 5000),
     dedupeMs: number('dedupeMs', 1000, 0, 30000),
     maxTabsPerTurn: number('maxTabsPerTurn', 5, 1, 50),

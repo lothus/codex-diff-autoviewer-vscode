@@ -133,8 +133,11 @@ class ReportEditTests(unittest.TestCase):
             self.assertIsNone(report_edit.scoped_regular_file(".", str(workspace), [str(workspace)]))
 
     def test_requires_successful_patch(self):
-        # Ignore failed or ambiguous tool responses.
+        # Accept Codex's successful wrapper and ignore failed or ambiguous responses.
         self.assertTrue(report_edit.successful_patch_response("Success. Updated the following files:"))
+        wrapped = "Exit code: 0\nWall time: 0.1 seconds\nOutput:\nSuccess. Updated the following files:"
+        self.assertTrue(report_edit.successful_patch_response(wrapped))
+        self.assertFalse(report_edit.successful_patch_response(wrapped.replace("Exit code: 0", "Exit code: 1")))
         self.assertFalse(report_edit.successful_patch_response("Failed to find expected lines"))
         self.assertFalse(report_edit.successful_patch_response({"output": "Error"}))
 
@@ -178,7 +181,7 @@ class ReportEditTests(unittest.TestCase):
                 "hook_event_name": "PostToolUse",
                 "tool_name": "apply_patch",
                 "tool_input": {"command": "*** Begin Patch\n*** Add File: new.txt\n*** Add File: missing.txt\n*** End Patch"},
-                "tool_response": "Success. Updated the following files:",
+                "tool_response": "Exit code: 0\nWall time: 0.1 seconds\nOutput:\nSuccess. Updated the following files:",
                 "cwd": str(workspace),
                 "session_id": "session-1",
                 "turn_id": "turn-1",
