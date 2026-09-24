@@ -1,8 +1,20 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/report_edit.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
-        "matcher": "^apply_patch$",
+        "matcher": "^apply_patch$|^Bash$|^mcp__.+__(?:write_file|edit_file|create_file|move_file|rename_file)$",
         "hooks": [
           {
             "type": "command",

@@ -4,9 +4,11 @@ This repository is an early implementation of the two-component design in [TASKS
 
 ## CLI plugin
 
-`codex-plugin/plugin.json` declares a portable plugin and `codex-plugin/hooks/hooks.json` runs `PostToolUse` for `apply_patch`. The hook script requires Python 3.9 or newer. It reads Codex's hook payload from standard input, accepts an explicit `Success.` response, extracts paths from patch headers, resolves them against the hook `cwd`, and sends existing regular files inside the active workspace to the local bridge. Delete targets are ignored because there is no file to open. A moved file is reported at its destination.
+`codex-plugin/plugin.json` declares a portable plugin. Its hooks run `PostToolUse` for `apply_patch`, Bash, and recognized MCP file-write tools, plus `PreToolUse` for Bash. The script requires Python 3.9 or newer. It extracts patch destinations after an explicit `Success.` response and reads destination fields from recognized structured write-tool inputs. Relative paths resolve against the hook `cwd`; only existing regular files inside the active workspace reach the bridge. Deletes have no destination to open, and moves are reported at their destination.
 
-The hook exits silently when there is no bridge, when a path is outside the workspace, or when delivery fails. It does not print the bridge token or the payload. Shell commands and other write-capable tools are not yet correlated with edits, because their arguments and output do not reliably list changed files. The hook has not yet been validated against real `PostToolUse` payloads from the Codex CLI or IDE extension.
+For Bash, the pre-hook records file size, timestamps, and inode in a private per-call snapshot. The post-hook compares that snapshot with current files and reports creates, modifications, and moves. Each scan stops after 5,000 files or 2,000 directories and skips common generated directories. When a scan exceeds either limit, that call produces no Bash edit events. The snapshot is removed after the post-hook. Bash output and command text are never treated as a reliable changed-file list. A separate process writing a file during the same Bash call can still be attributed to Codex; this is a known limit of time-based correlation. No workspace-wide watcher runs by default.
+
+The hook exits silently when there is no bridge, when a path is outside the workspace, or when delivery fails. It does not print the bridge token or payload. The [official hook contract](https://learn.chatgpt.com/docs/hooks) specifies the `PreToolUse` and `PostToolUse` fields and tool coverage. Actual payloads and hook delivery from Codex CLI and the IDE extension still need to be captured and validated end to end.
 
 The packaging flow uses the plugin commands available in Codex CLI 0.156.1. This is the earliest version checked for those commands, not a verified minimum for hook delivery. Real CLI and IDE hook tests are still needed before setting a supported minimum. Current [Codex hook documentation](https://learn.chatgpt.com/docs/hooks) describes the input fields and trust review, and the [plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) describes the portable manifest and hook registration.
 
@@ -89,6 +91,6 @@ Run the hook tests with:
 python3 -m unittest discover -s tests -v
 ```
 
-The tests cover patch operations, path scope including symlinks, descriptor privacy, and an authenticated request to a local receiver. Plugin installation, hook trust review, and an end-to-end editor test remain to be verified with real Codex validation.
+The tests cover patch and structured-tool paths, Bash snapshots, path scope including symlinks, descriptor privacy, and an authenticated request to a local receiver. Hook trust review and an end-to-end editor test remain to be verified with real Codex validation.
 
 Run `npm test` in `vscode-extension` for the listener, queue, and filtering tests. A VS Code integration test for actual tab and focus behavior remains to be implemented.

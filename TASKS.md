@@ -22,7 +22,7 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 - [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
 - [x] Add editor reveal settings, file filtering, deduplication, and per-turn burst limits.
 - [x] Add a local packaging and setup command for both components.
-- [ ] Correlate shell and other write-capable tool edits without opening unrelated changes.
+- [x] Correlate Bash edits with bounded before/after snapshots and recognize structured write-tool destinations.
 
 ## Feature 1 — Project and packaging
 
@@ -36,11 +36,11 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 ## Feature 2 — Detect Codex edits
 
 - [ ] Research and capture real `PostToolUse` payloads for `apply_patch`, shell commands, and other write-capable tools in the Codex IDE extension and CLI.
-- [ ] Parse explicit paths from structured tool input/output where available; never assume every shell command exposes its changed paths.
-- [ ] For commands without reliable paths, compare a bounded workspace snapshot around the tool execution or use a short watcher correlation window tied to an active Codex event.
-- [ ] Handle create, modify, rename, and delete events; open only paths that exist as regular files after the operation.
-- [ ] Normalize relative paths against the hook's working directory, resolve symlinks safely, and restrict results to open workspace folders.
-- [ ] Deduplicate repeated hook and watcher signals for the same file within a configurable short interval.
+- [x] Parse explicit paths from patch and recognized structured write-tool input; never assume every shell command exposes its changed paths.
+- [x] For Bash calls, compare a bounded workspace snapshot around the tool execution.
+- [x] Handle create, modify, rename, and delete results; open only paths that exist as regular files after the operation.
+- [x] Normalize relative paths against the hook's working directory, resolve symlinks safely, and restrict results to open workspace folders.
+- [x] Deduplicate repeated edit signals for the same file within a configurable short interval.
 
 **Done when:** Codex edits produce file events and unrelated editor, Git, build, or test writes do not cause automatic opening in the default mode.
 
