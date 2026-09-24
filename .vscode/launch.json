@@ -5,7 +5,7 @@
       "name": "Run Codex Auto Open",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"],
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode-extension", "${workspaceFolder}"],
       "outFiles": ["${workspaceFolder}/vscode-extension/out/**/*.js"],
       "preLaunchTask": "Build Codex Auto Open"
     }

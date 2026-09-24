@@ -10,10 +10,61 @@
   "main": "./out/extension.js",
   "activationEvents": ["onStartupFinished"],
   "extensionKind": ["workspace"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexAutoOpen.showRemaining",
+        "title": "Show Remaining Changed Files",
+        "category": "Codex Auto Open"
+      }
+    ],
+    "configuration": {
+      "title": "Codex Auto Open",
+      "properties": {
+        "codexAutoOpen.preserveFocus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep focus in Codex or the terminal when opening an edited file."
+        },
+        "codexAutoOpen.preview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open edited files as preview tabs rather than pinned tabs."
+        },
+        "codexAutoOpen.revealDelayMs": {
+          "type": "integer",
+          "default": 150,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Wait this many milliseconds to collect edits before opening tabs."
+        },
+        "codexAutoOpen.dedupeMs": {
+          "type": "integer",
+          "default": 1000,
+          "minimum": 0,
+          "maximum": 30000,
+          "description": "Suppress repeated events for the same file within this interval."
+        },
+        "codexAutoOpen.maxTabsPerTurn": {
+          "type": "integer",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum number of tabs opened automatically for one Codex turn."
+        },
+        "codexAutoOpen.exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional workspace-relative glob patterns for files to skip. Common generated directories are always skipped."
+        }
+      }
+    }
+  },
   "scripts": {
     "compile": "tsc -p .",
     "check": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test out/bridge.test.js"
+    "test": "npm run compile && node --test out/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

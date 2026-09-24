@@ -20,6 +20,7 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 - [x] Test patch parsing, path boundaries, descriptor permissions, and authenticated local delivery.
 - [ ] Verify real hook payloads and hook loading in both Codex surfaces.
 - [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
+- [x] Add editor reveal settings, file filtering, deduplication, and per-turn burst limits.
 - [ ] Correlate shell and other write-capable tool edits without opening unrelated changes.
 
 ## Feature 1 — Project and packaging
@@ -54,12 +55,12 @@ Use a local, authenticated bridge between the hook and extension. Keep a workspa
 
 ## Feature 4 — Open files in the editor
 
-- [ ] Use VS Code's document and editor APIs to reveal created or modified files.
-- [ ] Default to opening a preview tab with `preserveFocus: true`; expose settings for focus behavior, preview versus pinned tabs, and reveal timing.
-- [ ] Avoid reopening the active file or creating duplicate tabs for rapid edits.
-- [ ] Queue bursts and enforce a configurable per-turn tab limit; provide a concise notification or command to view any remaining changed files.
-- [ ] Skip binary files, generated/build directories, and paths matching user-configured exclusions.
-- [ ] Handle missing files, inaccessible remote files, and editor API failures without interrupting Codex.
+- [x] Use VS Code's document and editor APIs to reveal created or modified files.
+- [x] Default to opening a preview tab with `preserveFocus: true`; expose settings for focus behavior, preview versus pinned tabs, and reveal timing.
+- [x] Avoid reopening the active file or creating duplicate tabs for rapid edits.
+- [x] Queue bursts and enforce a configurable per-turn tab limit; provide a concise notification or command to view any remaining changed files.
+- [x] Skip recognized binary files, generated/build directories, and paths matching user-configured exclusions.
+- [x] Handle missing files, inaccessible files, and editor API failures without interrupting Codex. (Remote workflows still require Feature 5 validation.)
 
 **Done when:** A single text edit opens promptly, while a large multi-file edit remains usable and does not flood the editor.
 

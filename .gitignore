@@ -8,3 +8,4 @@ coverage/
 .vscode-test/
 *.tsbuildinfo
 *.vsix
+auto-open-smoke/
