@@ -6,7 +6,7 @@ This is an **early local build**. Local IDE edits and a CLI `apply_patch` edit h
 
 ## Quick start
 
-1. Have Python 3.9 or newer, Node.js 22 or newer with npm, the VS Code `code` command on `PATH`, and Codex CLI with `codex plugin` commands. Those plugin commands were checked with CLI 0.156.1; that is not a verified minimum version for hook delivery. Open a **local file workspace** in VS Code.
+1. Have Python 3.9 or newer, Node.js 22 or newer with npm, the VS Code `code` command on `PATH`, and **codex-cli 0.156.1 or newer** with `codex plugin` commands. Version 0.156.1 is the minimum supported Codex CLI version for this release. Open a **local file workspace** in VS Code.
 2. From this repository's root, install both components:
 
    ```sh

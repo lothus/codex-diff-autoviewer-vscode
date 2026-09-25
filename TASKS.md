@@ -6,7 +6,7 @@ When Codex creates or modifies a file in the current VS Code workspace, open tha
 
 ## Status
 
-The requested **local VS Code IDE and integrated CLI workflows pass** the acceptance checks below. The real Extension Host suite and a real `codex exec` edit also pass. The remaining unchecked items concern plugin-only delivery, version coverage, additional tool payloads, remote platforms, and public release. They are not prerequisites for the working shared-user-hook local setup described in the README.
+The requested **local VS Code IDE and integrated CLI workflows pass** the acceptance checks below. The real Extension Host suite and a real `codex exec` edit also pass. The minimum supported Codex CLI version is 0.156.1. The remaining unchecked items concern plugin-only delivery and version coverage for that route, additional tool payloads, remote platforms, and public release. They are not prerequisites for the working shared-user-hook local setup described in the README.
 
 ## Architecture decision
 
@@ -35,7 +35,7 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 
 - [x] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration.
 - [x] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script.
-- [ ] Establish and document the minimum supported Codex version after testing real hook delivery across versions.
+- [x] Document codex-cli 0.156.1 as the minimum supported version for this release; the shared user hook delivered real CLI edits on that version. Earlier CLI versions are outside the supported range.
 - [x] Provide one local setup flow that installs the VS Code extension, CLI plugin, and shared user hook, including hook trust review instructions.
 - [x] Document local development, packaging, installation, upgrade, and removal for both components.
 
