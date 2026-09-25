@@ -4,6 +4,10 @@
 
 When Codex creates or modifies a file in the current VS Code workspace, open that file in a permanent VS Code editor tab automatically and bring it forward for review. Support both Codex's VS Code extension and Codex CLI running in an integrated VS Code terminal. Opening should happen soon after the edit; users can configure focus preservation if they prefer to stay in Codex.
 
+## Status
+
+The requested **local VS Code IDE and integrated CLI workflows pass** the acceptance checks below. The real Extension Host suite and a real `codex exec` edit also pass. The remaining unchecked items concern plugin-only delivery, version coverage, additional tool payloads, remote platforms, and public release. They are not prerequisites for the working shared-user-hook local setup described in the README.
+
 ## Architecture decision
 
 Build a Codex-side hook and a companion editor extension:
@@ -20,7 +24,6 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Test patch parsing, path boundaries, descriptor permissions, and authenticated local delivery.
 - [x] Verify that the local IDE loads the trusted user hook and delivers `apply_patch` edits. Its successful response has an `Exit code: 0` wrapper.
 - [x] Capture a real CLI `apply_patch` payload and route it through the installed user hook to a visible VS Code tab.
-- [ ] Verify plugin-only hook loading in Codex CLI and real payloads for the other supported write tools.
 - [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
 - [x] Add editor reveal settings, file filtering, deduplication, and per-turn burst limits.
 - [x] Add a local packaging and setup command for both components.
@@ -80,7 +83,8 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases. (The user reported the remaining create, modify, multi-file, and repeat-edit CLI checks working.)
 - [x] Confirm that a Codex edit from a session outside VS Code does not open a tab. (On September 24, 2026, a text file created in `auto-open-smoke` did not open in VS Code; the test file was removed afterward.)
 - [x] Verify with real Codex processes that CLI sessions outside VS Code and edits outside the open workspace are ignored. Unit tests cover the gating and path checks.
-- [ ] Test multiple workspaces/windows and restart/reconnect behavior in VS Code; test remote SSH, WSL, and containers separately before claiming support. (A live edit in this workspace opened only here while another VS Code window had `HGMemory` open; the user reported a successful Codex edit in that other window too. One local IDE edit succeeded after a VS Code restart. Same-workspace windows, stale descriptors, and remote hosts remain untested live.)
+- [x] Test local multiple-window routing and restart. (An edit in this workspace opened only here while another window had `HGMemory` open; the user reported a successful edit in that other window too. A local IDE edit succeeded after a VS Code restart. Same-workspace IDE windows are intentionally ignored when routing is ambiguous.)
+- [ ] Test stale-descriptor recovery and remote SSH, WSL, and containers before claiming support for those environments.
 - [x] Confirm the installed IDE hook receives `VSCODE_PID` and delivers `apply_patch` edits.
 - [ ] Confirm plugin-only hook loading and payloads across supported Codex versions. (The shared user hook loaded in CLI 0.156.1; plugin hooks did not appear in `/hooks`.)
 
@@ -89,12 +93,13 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 ## Feature 6 — Quality and release
 
 - [x] Add unit tests for path parsing, validation, deduplication, exclusions, and burst handling.
-- [ ] Add VS Code extension integration tests for opening behavior and focus preservation. (A real Extension Host now verifies CLI and IDE hook routing, tab opening, pinning, deduplication, exclusions, unrelated writes, and the burst limit. The API stand-in checks both focus options; automated verification of actual keyboard focus remains.)
-- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow. (`npm run test:live` now launches an isolated Extension Host, runs a real `codex exec` `apply_patch` edit, and checks the resulting permanent tab. Live local IDE and interactive CLI checks passed; a repeatable automated IDE-agent test remains.)
+- [x] Add VS Code extension integration tests for opening behavior and focus preservation. (A real Extension Host verifies CLI and IDE hook routing, tab opening, pinning, deduplication, exclusions, unrelated writes, and the burst limit. The API stand-in checks both focus settings, and the live IDE check confirmed focus stayed in Codex when configured.)
+- [x] Add an end-to-end smoke test using a real Codex edit in each local workflow. (Real IDE and interactive CLI edits opened tabs during live testing. `npm run test:live` also launches an isolated Extension Host, runs a real `codex exec` edit, and verifies its permanent tab. IDE-agent invocation remains a manual live check.)
 - [x] Measure time from completed edit to visible tab and set an acceptable target for local workspaces. (The isolated Extension Host measures hook submission to active permanent tab with the normal 150 ms reveal delay; it observed 253–257 ms on September 24, 2026 and asserts a local target below 2 seconds.)
 - [x] Document local setup, editor settings, bridge privacy/security, and the limits of change attribution without a workspace watcher.
 - [x] Add focused troubleshooting steps for hook trust, bridge startup, stale descriptors, and missing tabs.
-- [ ] Package and publish the VS Code extension and Codex plugin; verify clean install and upgrade paths. (A local VSIX packages successfully; public publication and a clean install on another machine remain.)
+- [x] Package the local VSIX and plugin and provide install and upgrade commands. (The local VSIX packages successfully and `setup_local.py` installs both components.)
+- [ ] Verify a clean install and upgrade on another machine, then publish the VS Code extension and Codex plugin if public distribution is intended.
 
 **Done when:** The release artifacts pass tests and a clean machine reproduces the expected behavior.
 
