@@ -45,7 +45,7 @@ def ide_hooks_path():
 
 
 def update_ide_hooks(script=None):
-    # Preserve unrelated user hooks while adding or removing our IDE-only handlers.
+    # Preserve unrelated user hooks while adding or removing shared handlers.
     path = ide_hooks_path()
     if script is None and not path.exists():
         return
@@ -88,7 +88,7 @@ def update_ide_hooks(script=None):
 
 
 def install():
-    # Package the extension and register a versioned copy of the plugin.
+    # Package the extension and register a versioned local plugin copy.
     for executable in ("npm", "code", "codex"):
         if shutil.which(executable) is None:
             raise RuntimeError(f"{executable} is required on PATH")
@@ -102,6 +102,7 @@ def install():
     target = root / "plugins" / NAME
     target.mkdir(parents=True, exist_ok=True)
     for source in (ROOT / "codex-plugin" / "plugin.json",
+                   ROOT / "codex-plugin" / ".codex-plugin" / "plugin.json",
                    ROOT / "codex-plugin" / "hooks" / "hooks.json",
                    ROOT / "codex-plugin" / "hooks" / "report_edit.py"):
         destination = target / source.relative_to(ROOT / "codex-plugin")
@@ -131,7 +132,7 @@ def install():
     run("codex", "plugin", "add", f"{NAME}@{MARKETPLACE}")
     run("code", "--install-extension", str(ROOT / "dist" / f"{NAME}.vsix"), "--force")
     update_ide_hooks(target / "hooks" / "report_edit.py")
-    print("Installed both components. Restart VS Code and Codex, then review both hook sources with /hooks.")
+    print("Installed both components. Restart VS Code and Codex, then review the user hooks with /hooks.")
 
 
 def remove():

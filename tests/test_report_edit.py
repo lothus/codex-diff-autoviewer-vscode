@@ -175,8 +175,6 @@ class ReportEditTests(unittest.TestCase):
                 "workspaceFolders": [str(workspace)],
             }))
             descriptor.chmod(0o600)
-            thread = threading.Thread(target=server.handle_request, daemon=True)
-            thread.start()
             hook = {
                 "hook_event_name": "PostToolUse",
                 "tool_name": "apply_patch",
@@ -188,21 +186,25 @@ class ReportEditTests(unittest.TestCase):
             }
             env = os.environ.copy()
             env["CODEX_AUTO_OPEN_BRIDGE_FILE"] = str(descriptor)
-            result = subprocess.run(
-                [sys.executable, str(SCRIPT)], input=json.dumps(hook), text=True,
-                capture_output=True, env=env, timeout=3, check=True,
-            )
-            thread.join(timeout=1)
-            self.assertEqual(result.stdout, "")
-            self.assertEqual(result.stderr, "")
-            self.assertEqual(len(received), 1)
-            route, authorization, event = received[0]
-            self.assertEqual(route, "/v1/events")
-            self.assertEqual(authorization, f"Bearer {token}")
-            self.assertEqual(event["path"], str(target))
-            self.assertEqual(event["operation"], "create")
-            self.assertEqual(event["sessionId"], "session-1")
-            self.assertEqual(event["turnId"], "turn-1")
+            for args in ((), ("--ide",)):
+                with self.subTest(args=args):
+                    thread = threading.Thread(target=server.handle_request, daemon=True)
+                    thread.start()
+                    result = subprocess.run(
+                        [sys.executable, str(SCRIPT), *args], input=json.dumps(hook), text=True,
+                        capture_output=True, env=env, timeout=3, check=True,
+                    )
+                    thread.join(timeout=1)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(result.stderr, "")
+                    route, authorization, event = received[-1]
+                    self.assertEqual(route, "/v1/events")
+                    self.assertEqual(authorization, f"Bearer {token}")
+                    self.assertEqual(event["path"], str(target))
+                    self.assertEqual(event["operation"], "create")
+                    self.assertEqual(event["sessionId"], "session-1")
+                    self.assertEqual(event["turnId"], "turn-1")
+            self.assertEqual(len(received), 2)
 
     def test_rejects_public_descriptor(self):
         # Reject a bridge descriptor readable by other local users.

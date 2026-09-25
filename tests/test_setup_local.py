@@ -37,6 +37,7 @@ class SetupLocalTests(unittest.TestCase):
             self.assertEqual(catalog["plugins"][0]["source"]["path"],
                              "./plugins/codex-auto-open")
             self.assertTrue((plugin / "hooks" / "report_edit.py").is_file())
+            self.assertTrue((plugin / ".codex-plugin" / "plugin.json").is_file())
             self.assertTrue(manifest["version"].startswith("0.1.0+codex.local-"))
             self.assertEqual(commands[-2],
                              ("codex", "plugin", "add", "codex-auto-open@codex-auto-open-local"))

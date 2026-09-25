@@ -1,0 +1,17 @@
+{
+  "name": "codex-auto-open",
+  "version": "0.1.0",
+  "description": "Report Codex file edits to a companion VS Code extension.",
+  "author": {
+    "name": "Local Development"
+  },
+  "interface": {
+    "displayName": "Codex Auto Open",
+    "shortDescription": "Open Codex edits in VS Code",
+    "longDescription": "Open changed workspace files in permanent VS Code editor tabs.",
+    "developerName": "Local Development",
+    "category": "Productivity",
+    "capabilities": ["Write"],
+    "defaultPrompt": ["Help me check Codex Auto Open in VS Code."]
+  }
+}

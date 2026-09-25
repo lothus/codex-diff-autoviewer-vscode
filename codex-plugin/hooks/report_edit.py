@@ -325,8 +325,6 @@ def main():
         return
     cwd = hook.get("cwd")
     ide = "--ide" in sys.argv[1:]
-    if ide and os.environ.get("CODEX_AUTO_OPEN_BRIDGE_FILE"):
-        return
     descriptor = load_bridge(cwd, ide)
     if not descriptor or not isinstance(cwd, str) or not os.path.isabs(cwd):
         return
