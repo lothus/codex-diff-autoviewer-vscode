@@ -128,11 +128,13 @@ def read_bridge(name):
 
 
 def load_bridge(cwd=None, ide=False):
-    # Select the terminal's descriptor or one unambiguous IDE workspace bridge.
+    # Select an explicit descriptor or one unambiguous VS Code workspace bridge.
     name = os.environ.get("CODEX_AUTO_OPEN_BRIDGE_FILE")
     if name:
         return read_bridge(name)
-    if not ide or not os.environ.get("VSCODE_PID") or not isinstance(cwd, str):
+    from_vscode = os.environ.get("VSCODE_PID") if ide else None
+    from_terminal = os.environ.get("TERM_PROGRAM") == "vscode"
+    if not (from_vscode or from_terminal) or not isinstance(cwd, str):
         return None
     try:
         working = Path(cwd).resolve(strict=True)

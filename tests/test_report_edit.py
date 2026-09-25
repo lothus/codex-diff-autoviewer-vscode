@@ -250,8 +250,32 @@ class ReportEditTests(unittest.TestCase):
                 descriptor(2)
                 self.assertIsNone(report_edit.load_bridge(str(workspace), True))
             with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
+                    patch.dict(os.environ, {"TERM_PROGRAM": "vscode"}, clear=True):
+                self.assertIsNone(report_edit.load_bridge(str(workspace), False))
+            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
                     patch.dict(os.environ, {}, clear=True):
                 self.assertIsNone(report_edit.load_bridge(str(workspace), True))
+
+    def test_terminal_bridge_selects_unique_workspace(self):
+        # Use VS Code's terminal marker only when one live private bridge matches.
+        with tempfile.TemporaryDirectory() as root:
+            workspace = Path(root) / "workspace"
+            workspace.mkdir()
+            directory = Path(root) / "codex-auto-open-one"
+            directory.mkdir(mode=0o700)
+            descriptor = directory / "bridge.json"
+            descriptor.write_text(json.dumps({
+                "version": 1, "port": 1234, "token": "t" * 32,
+                "processId": os.getpid(), "workspaceFolders": [str(workspace)],
+            }))
+            descriptor.chmod(0o600)
+            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
+                    patch.dict(os.environ, {"TERM_PROGRAM": "vscode"}, clear=True):
+                self.assertEqual(report_edit.load_bridge(str(workspace), False)["descriptorPath"],
+                                 str(descriptor))
+            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
+                    patch.dict(os.environ, {"TERM_PROGRAM": "other"}, clear=True):
+                self.assertIsNone(report_edit.load_bridge(str(workspace), False))
 
 
 if __name__ == "__main__":

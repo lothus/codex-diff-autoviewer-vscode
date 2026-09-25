@@ -26,6 +26,7 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Add a local packaging and setup command for both components.
 - [x] Correlate Bash edits with bounded before/after snapshots and recognize structured write-tool destinations.
 - [x] Add shared CLI/IDE user-hook registration, private descriptor discovery, and stale process filtering; local `apply_patch` delivery passed in both surfaces.
+- [x] Fall back to unique workspace bridge discovery when a VS Code integrated terminal lacks the injected descriptor; a normal `apply_patch` edit and a new file opened in the active window without per-edit setup.
 
 ## Feature 1 — Project and packaging
 
@@ -76,7 +77,7 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Select a private IDE bridge owned by a running process only for one matching local workspace; unit-test outside-workspace, stale-process, and ambiguous-window rejection.
 - [x] Document a workflow matrix for local IDE, integrated CLI, outside CLI, multiple windows, restart, and remote hosts in the README.
 - [x] Test Codex's VS Code extension in a local workspace: new file, existing file, multiple files, and repeated edits. (Live tested on September 24, 2026 with permanent foreground tabs and no duplicate tab on repeat edits.)
-- [ ] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases.
+- [ ] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases. (A normal edit and new file opened in the active window on September 24, 2026 without an explicit bridge value; multi-file and repeat-edit tab behavior still need direct inspection.)
 - [ ] Verify with real Codex processes that CLI sessions outside VS Code and edits outside the open workspace are ignored. Unit tests cover the gating and path checks.
 - [ ] Test multiple workspaces/windows and restart/reconnect behavior in VS Code; test remote SSH, WSL, and containers separately before claiming support. (One local IDE edit succeeded after a VS Code restart; stale-descriptor and multi-window behavior remain untested live.)
 - [x] Confirm the installed IDE hook receives `VSCODE_PID` and delivers `apply_patch` edits.
@@ -87,12 +88,12 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 ## Feature 6 — Quality and release
 
 - [x] Add unit tests for path parsing, validation, deduplication, exclusions, and burst handling.
-- [ ] Add VS Code extension integration tests for opening behavior and focus preservation.
-- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow. (Manual local IDE and one real CLI `apply_patch` test passed; an interactive integrated-terminal test and an automated repeatable test remain.)
+- [ ] Add VS Code extension integration tests for opening behavior and focus preservation. (The automated hook-to-bridge-to-queue pipeline now checks both focus settings against a VS Code API stand-in; a real Extension Host test remains.)
+- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow. (Live local IDE and integrated CLI `apply_patch` checks passed; an automated repeatable real-Codex test remains.)
 - [ ] Measure time from completed edit to visible tab and set an acceptable target for local workspaces.
 - [x] Document local setup, editor settings, bridge privacy/security, and the limits of change attribution without a workspace watcher.
 - [x] Add focused troubleshooting steps for hook trust, bridge startup, stale descriptors, and missing tabs.
-- [ ] Package and publish the VS Code extension and Codex plugin; verify clean install and upgrade paths.
+- [ ] Package and publish the VS Code extension and Codex plugin; verify clean install and upgrade paths. (A local VSIX packages successfully; public publication and a clean install on another machine remain.)
 
 **Done when:** The release artifacts pass tests and a clean machine reproduces the expected behavior.
 
