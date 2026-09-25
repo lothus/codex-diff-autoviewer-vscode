@@ -85,4 +85,6 @@ cd vscode-extension
 npm test
 ```
 
-These cover hook path extraction and Bash snapshots, descriptor privacy, authentication, workspace scope, filtering, and queue behavior. They do not replace a live check of actual tab and focus behavior. The remaining live workflow checks include more tool payloads, multiple-window routing, restart behavior, and remote hosts.
+These cover hook path extraction and Bash snapshots, descriptor privacy, authentication, workspace scope, filtering, and queue behavior. For a real VS Code Extension Host check, run `npm run test:host` in `vscode-extension`. It starts a disposable workspace and VS Code profile, submits patch events through the real hook using both explicit CLI and discovered IDE bridge routes, and verifies permanent tabs, deduplication, exclusions, unrelated writes, and the tab limit with VS Code's editor API. Run `npm run test:live` to add one real `codex exec` edit to that check; it requires a working Codex sign-in and installed, trusted user hooks. Both commands leave your normal VS Code profile alone.
+
+The Extension Host checks time hook submission to an active permanent tab with the normal 150 ms reveal delay and require it to take less than two seconds. They do not measure keyboard focus inside Codex, and `test:live` exercises the CLI route rather than the IDE agent. Remote hosts, same-workspace duplicate windows, and plugin-only hook delivery remain unverified.

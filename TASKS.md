@@ -56,7 +56,7 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Generate an ephemeral secret or token for the bridge and make it available to the hook without placing it in logs or the repository.
 - [x] Define a small versioned event message with path, operation, session/turn identifier when available, and timestamp.
 - [x] Validate authentication, message size, path scope, and stale events; fail quietly if VS Code is closed or the bridge is unavailable.
-- [ ] Support multiple VS Code windows and workspaces without opening a file in the wrong window. (Unique IDE window selection and per-window CLI descriptors have unit coverage; live multi-window behavior remains to be tested. Same-workspace IDE windows are deliberately ignored.)
+- [x] Support multiple VS Code windows and workspaces without opening a file in the wrong window. (A live IDE edit opened only in the owning window with a second VS Code window on a different workspace; the user also tested a Codex edit in the other window and reported that it opened correctly there. Unique IDE window selection and per-window CLI descriptors have unit coverage. Same-workspace IDE windows are deliberately ignored and remain untested live.)
 
 **Done when:** An edit from the correct Codex session reaches only the intended VS Code window.
 
@@ -76,10 +76,11 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 - [x] Implement a user-hook route for both CLI and IDE; preserve unrelated user hooks during install and removal.
 - [x] Select a private IDE bridge owned by a running process only for one matching local workspace; unit-test outside-workspace, stale-process, and ambiguous-window rejection.
 - [x] Document a workflow matrix for local IDE, integrated CLI, outside CLI, multiple windows, restart, and remote hosts in the README.
-- [x] Test Codex's VS Code extension in a local workspace: new file, existing file, multiple files, and repeated edits. (Live tested on September 24, 2026 with permanent foreground tabs and no duplicate tab on repeat edits.)
-- [ ] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases. (A normal edit and new file opened in the active window on September 24, 2026 without an explicit bridge value; multi-file and repeat-edit tab behavior still need direct inspection.)
-- [ ] Verify with real Codex processes that CLI sessions outside VS Code and edits outside the open workspace are ignored. Unit tests cover the gating and path checks.
-- [ ] Test multiple workspaces/windows and restart/reconnect behavior in VS Code; test remote SSH, WSL, and containers separately before claiming support. (One local IDE edit succeeded after a VS Code restart; stale-descriptor and multi-window behavior remain untested live.)
+- [x] Test Codex's VS Code extension in a local workspace: new file, existing file, multiple files, and repeated edits. (Live retested on September 24, 2026: a new `apply_patch` file opened as an active permanent tab; a later multi-file patch opened a second file and reused the first tab. With `preserveFocus` enabled, focus stayed in Codex. A Codex shell write also opened a tab, while a manual VS Code edit did not open another tab. An edit in `dist` stayed closed.)
+- [x] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases. (The user reported the remaining create, modify, multi-file, and repeat-edit CLI checks working.)
+- [x] Confirm that a Codex edit from a session outside VS Code does not open a tab. (On September 24, 2026, a text file created in `auto-open-smoke` did not open in VS Code; the test file was removed afterward.)
+- [x] Verify with real Codex processes that CLI sessions outside VS Code and edits outside the open workspace are ignored. Unit tests cover the gating and path checks.
+- [ ] Test multiple workspaces/windows and restart/reconnect behavior in VS Code; test remote SSH, WSL, and containers separately before claiming support. (A live edit in this workspace opened only here while another VS Code window had `HGMemory` open; the user reported a successful Codex edit in that other window too. One local IDE edit succeeded after a VS Code restart. Same-workspace windows, stale descriptors, and remote hosts remain untested live.)
 - [x] Confirm the installed IDE hook receives `VSCODE_PID` and delivers `apply_patch` edits.
 - [ ] Confirm plugin-only hook loading and payloads across supported Codex versions. (The shared user hook loaded in CLI 0.156.1; plugin hooks did not appear in `/hooks`.)
 
@@ -88,9 +89,9 @@ Use a local, authenticated bridge between the hook and extension. Integrated ter
 ## Feature 6 — Quality and release
 
 - [x] Add unit tests for path parsing, validation, deduplication, exclusions, and burst handling.
-- [ ] Add VS Code extension integration tests for opening behavior and focus preservation. (The automated hook-to-bridge-to-queue pipeline now checks both focus settings against a VS Code API stand-in; a real Extension Host test remains.)
-- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow. (Live local IDE and integrated CLI `apply_patch` checks passed; an automated repeatable real-Codex test remains.)
-- [ ] Measure time from completed edit to visible tab and set an acceptable target for local workspaces.
+- [ ] Add VS Code extension integration tests for opening behavior and focus preservation. (A real Extension Host now verifies CLI and IDE hook routing, tab opening, pinning, deduplication, exclusions, unrelated writes, and the burst limit. The API stand-in checks both focus options; automated verification of actual keyboard focus remains.)
+- [ ] Add an end-to-end smoke test using a real Codex edit in each workflow. (`npm run test:live` now launches an isolated Extension Host, runs a real `codex exec` `apply_patch` edit, and checks the resulting permanent tab. Live local IDE and interactive CLI checks passed; a repeatable automated IDE-agent test remains.)
+- [x] Measure time from completed edit to visible tab and set an acceptable target for local workspaces. (The isolated Extension Host measures hook submission to active permanent tab with the normal 150 ms reveal delay; it observed 253–257 ms on September 24, 2026 and asserts a local target below 2 seconds.)
 - [x] Document local setup, editor settings, bridge privacy/security, and the limits of change attribution without a workspace watcher.
 - [x] Add focused troubleshooting steps for hook trust, bridge startup, stale descriptors, and missing tabs.
 - [ ] Package and publish the VS Code extension and Codex plugin; verify clean install and upgrade paths. (A local VSIX packages successfully; public publication and a clean install on another machine remain.)

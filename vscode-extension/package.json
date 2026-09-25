@@ -75,6 +75,8 @@
     "compile": "tsc -p .",
     "check": "tsc -p . --noEmit",
     "test": "npm run compile && node --test out/*.test.js",
+    "test:host": "npm run compile && python3 ../scripts/test_extension_host.py",
+    "test:live": "npm run compile && python3 ../scripts/test_extension_host.py --real-codex",
     "package": "npm run compile && node -e \"require('fs').mkdirSync('../dist',{recursive:true})\" && vsce package --no-dependencies --allow-missing-repository --skip-license --out ../dist/codex-auto-open.vsix"
   },
   "devDependencies": {
