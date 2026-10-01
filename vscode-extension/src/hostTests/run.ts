@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as vscode from 'vscode';
+import { EMPTY_DIFF_SCHEME } from '../editor';
 
 const extensionId = 'local.codex-auto-open';
 const hookScript = path.resolve(__dirname, '../../../ide-hooks/report_edit.py');
@@ -78,10 +79,11 @@ async function reportPatch(descriptor: string, workspace: string, file: string,
 // Return editor tabs for one workspace file.
 function tabsFor(file: string): vscode.Tab[] {
   return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab =>
-    tab.input instanceof vscode.TabInputText && tab.input.uri.fsPath === file);
+    (tab.input instanceof vscode.TabInputText && tab.input.uri.fsPath === file)
+    || (tab.input instanceof vscode.TabInputTextDiff && tab.input.modified.fsPath === file));
 }
 
-// Create a file, report its edit, and wait for a permanent editor tab.
+// Create a file, report its edit, and wait for a permanent diff tab.
 async function openedFile(descriptor: string, workspace: string, relative: string,
   turnId: string): Promise<string> {
   const file = path.join(workspace, relative);
@@ -90,6 +92,7 @@ async function openedFile(descriptor: string, workspace: string, relative: strin
   await reportPatch(descriptor, workspace, file, turnId);
   await waitUntil(() => tabsFor(file).length === 1, relative);
   assert.equal(tabsFor(file)[0].isPreview, false);
+  assert.ok(tabsFor(file)[0].input instanceof vscode.TabInputTextDiff, 'opened an ordinary file tab');
   return file;
 }
 
@@ -111,9 +114,12 @@ async function syntheticChecks(descriptor: string, workspace: string): Promise<v
   const revealMs = Math.round(performance.now() - started);
   assert.ok(revealMs < 2000, `Local hook-to-active-tab latency was ${revealMs} ms`);
   console.log(`Extension Host hook-to-active-tab latency: ${revealMs} ms (target <2000 ms)`);
-  assert.equal(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputText,
+  assert.equal(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTextDiff,
     true);
   assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath, first);
+  const firstInput = tabsFor(first)[0].input as vscode.TabInputTextDiff;
+  assert.equal(firstInput.original.scheme, EMPTY_DIFF_SCHEME);
+  assert.equal((await vscode.workspace.openTextDocument(firstInput.original)).getText(), '');
   await reportPatch(descriptor, workspace, first, 'repeat');
   assert.equal(tabsFor(first).length, 1, 'repeat edit duplicated the tab');
   await openedFile(descriptor, workspace, 'ide-route.txt', 'ide-route');
@@ -130,6 +136,66 @@ async function syntheticChecks(descriptor: string, workspace: string): Promise<v
   await reportPatch(descriptor, workspace, excluded, 'exclude');
   await new Promise(resolve => setTimeout(resolve, 400));
   assert.equal(tabsFor(excluded).length, 0, 'excluded file opened a tab');
+  const tracked = path.join(workspace, 'tracked.rs');
+  await fs.writeFile(tracked, 'staged baseline\n');
+  await runProcess('git', ['-C', workspace, 'add', 'tracked.rs'], undefined, process.env);
+  await fs.writeFile(tracked, 'working-tree edit\n');
+  await reportPatch(descriptor, workspace, tracked, 'tracked');
+  await waitUntil(() => tabsFor(tracked).length === 1, 'tracked diff');
+  const trackedInput = tabsFor(tracked)[0].input;
+  assert.ok(trackedInput instanceof vscode.TabInputTextDiff);
+  assert.equal(trackedInput.original.scheme, 'git');
+  assert.equal((await vscode.workspace.openTextDocument(trackedInput.original)).getText(), 'staged baseline\n');
+  assert.equal((await vscode.workspace.openTextDocument(trackedInput.modified)).getText(), 'working-tree edit\n');
+
+  const renamed = path.join(workspace, 'renamed.rs');
+  await fs.rename(path.join(workspace, 'old-name.rs'), renamed);
+  await runProcess('git', ['-C', workspace, 'add', '--intent-to-add', 'renamed.rs'], undefined, process.env);
+  await reportPatch(descriptor, workspace, renamed, 'rename');
+  await waitUntil(() => tabsFor(renamed).length === 1, 'rename diff');
+  const renameInput = tabsFor(renamed)[0].input;
+  assert.ok(renameInput instanceof vscode.TabInputTextDiff);
+  assert.equal((await vscode.workspace.openTextDocument(renameInput.original)).getText(), 'rename baseline\n');
+
+  const nested = path.join(workspace, 'nested');
+  await fs.mkdir(nested);
+  await runProcess('git', ['init', '--quiet', nested], undefined, process.env);
+  const nestedFile = path.join(nested, 'tracked.rs');
+  await fs.writeFile(nestedFile, 'nested index baseline\n');
+  await runProcess('git', ['-C', nested, 'add', 'tracked.rs'], undefined, process.env);
+  await fs.writeFile(nestedFile, 'nested working-tree edit\n');
+  await reportPatch(descriptor, workspace, nestedFile, 'nested');
+  await waitUntil(() => tabsFor(nestedFile).length === 1, 'nested repository diff');
+  const nestedInput = tabsFor(nestedFile)[0].input;
+  assert.ok(nestedInput instanceof vscode.TabInputTextDiff);
+  assert.equal((await vscode.workspace.openTextDocument(nestedInput.original)).getText(), 'nested index baseline\n');
+
+  const outsideRoot = vscode.workspace.workspaceFolders?.[1]?.uri.fsPath;
+  assert.ok(outsideRoot, 'Open the second workspace folder without a Git repository');
+  const outsideFile = path.join(outsideRoot, 'outside.py');
+  await fs.writeFile(outsideFile, 'outside repository\n');
+  await reportPatch(descriptor, outsideRoot, outsideFile, 'outside');
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.equal(tabsFor(outsideFile).length, 0, 'non-repository file opened a tab');
+
+  const ignored = path.join(workspace, 'ignored.txt');
+  await fs.writeFile(ignored, 'ignored\n');
+  await reportPatch(descriptor, workspace, ignored, 'ignored');
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.equal(tabsFor(ignored).length, 0, 'Git-ignored file opened a tab');
+  await runProcess('git', ['-C', workspace, 'add', 'tracked.rs'], undefined, process.env);
+  await vscode.window.tabGroups.close(tabsFor(tracked));
+  await new Promise(resolve => setTimeout(resolve, 1050));
+  await reportPatch(descriptor, workspace, tracked, 'clean');
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.equal(tabsFor(tracked).length, 0, 'clean file opened a tab');
+
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(manual), { preview: false });
+  await reportPatch(descriptor, workspace, first, 'background');
+  await waitUntil(() => (vscode.window.tabGroups.activeTabGroup.activeTab?.input as vscode.TabInputTextDiff)
+    ?.modified?.fsPath === first, 'background diff to become active');
+  assert.equal(tabsFor(first).length, 1, 'background reveal duplicated the diff');
+
   const burst = ['burst-1.txt', 'burst-2.txt', 'burst-3.txt'];
   for (const relative of burst) {
     const file = path.join(workspace, relative);

@@ -2,6 +2,7 @@
 """Run Codex Auto Open tests inside an isolated VS Code Extension Host."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -20,6 +21,19 @@ def main():
         base = Path(temporary)
         workspace = base / "workspace"
         workspace.mkdir()
+        subprocess.run(["git", "init", "--quiet", str(workspace)], check=True)
+        (workspace / "tracked.rs").write_text("committed baseline\n")
+        (workspace / "old-name.rs").write_text("rename baseline\n")
+        (workspace / ".gitignore").write_text("dist/\nignored.txt\n")
+        subprocess.run(["git", "-C", str(workspace), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(workspace), "-c", "user.name=Extension Host Test",
+                        "-c", "user.email=extension-host@example.invalid", "commit", "--quiet",
+                        "-m", "Prepare diff fixtures"], check=True)
+        outside = base / "outside"
+        outside.mkdir()
+        workspace_file = base / "diff-tests.code-workspace"
+        workspace_file.write_text(json.dumps({"folders": [
+            {"path": str(workspace)}, {"path": str(outside)}]}))
         environment = os.environ.copy()
         for name in ("ELECTRON_RUN_AS_NODE", "VSCODE_CLI", "VSCODE_IPC_HOOK_CLI"):
             environment.pop(name, None)
@@ -34,7 +48,7 @@ def main():
             f"--extensionTestsPath={ROOT / 'vscode-extension' / 'out' / 'hostTests' / 'run.js'}",
             "--skip-welcome",
             "--disable-workspace-trust",
-            str(workspace),
+            str(workspace_file),
         ]
         result = subprocess.run(command, capture_output=True, text=True,
                                 env=environment, timeout=180)

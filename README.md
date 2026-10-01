@@ -1,6 +1,6 @@
 # Codex Auto Open for VS Code
 
-Codex Auto Open reveals files directly edited by the Codex VS Code extension in the owning window's editor viewport. Eligible files open as permanent foreground tabs by default. Rust, Python, Julia, and Lean source files use the same edit detection.
+Codex Auto Open reveals Git diffs for files directly edited by the Codex VS Code extension in the owning window's editor viewport. Eligible comparisons open as permanent foreground diff tabs by default. Rust, Python, Julia, and Lean source files use the same edit detection.
 
 Codex CLI/CMD sessions are unsupported and ignored, including those in VS Code integrated terminals. Generic shell writes, builds, tests, generators, and dependency commands do not produce automatic opens. No workspace watcher or shell snapshot scan is used.
 
@@ -22,18 +22,22 @@ If upgrading from the former plugin build, remove **codex-auto-open@codex-auto-o
 
 ## Use and settings
 
-Ask Codex in the VS Code sidebar to create or edit a workspace file using a direct edit tool such as `apply_patch`. The hook reports explicit destinations after a successful edit. Renames open the destination; deleted, missing, binary, excluded, or out-of-workspace files remain closed. Shell commands that edit files are ignored.
+Ask Codex in the VS Code sidebar to create or edit a workspace file using a direct edit tool such as `apply_patch`. The hook reports explicit destinations after a successful edit. Renames compare the destination with the original indexed path when Git identifies it; deleted, missing, binary, excluded, or out-of-workspace files remain closed. Shell commands that edit files are ignored.
+
+Tracked files compare the **Git index (staging area)** on the left with the **current working-tree file** on the right, matching the unstaged Changes comparison. This includes all unstaged changes, including edits made before the latest Codex operation. Staged changes are part of the baseline. New untracked files compare against an empty document. For renames without an indexed source identified by Git, the destination is treated as a new file.
+
+The extension uses the nearest owning Git repository, including nested repositories and multiple workspace folders. Git must be available and VS Code's built-in Git integration enabled. Ignored files, unchanged/staged-only files, unresolved conflicts, non-repository files, and unsupported change types are skipped; there is no ordinary file-tab fallback. Reasons appear in the **Codex Auto Open** Output channel. Existing diffs are reused; ordinary file tabs do not prevent opening a comparison.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `codexAutoOpen.preserveFocus` | `false` | Keep focus in Codex when `true`. |
-| `codexAutoOpen.preview` | `false` | Use preview tabs when `true`. |
+| `codexAutoOpen.preview` | `false` | Use preview diff tabs when `true`. |
 | `codexAutoOpen.revealDelayMs` | `150` | Collect edit events for this many milliseconds. |
 | `codexAutoOpen.dedupeMs` | `1000` | Suppress repeated events for a path within this interval. |
-| `codexAutoOpen.maxTabsPerTurn` | `5` | Limit automatic opens per turn. |
+| `codexAutoOpen.maxTabsPerTurn` | `5` | Limit automatic diff opens per turn. |
 | `codexAutoOpen.exclude` | `[]` | Additional workspace-relative exclusion globs. |
 
-Use **Codex Auto Open: Show Remaining Changed Files** to open burst overflow. Repeated-edit consistency and language-specific exclusion improvements remain tracked in `TASKS.md`.
+Use **Codex Auto Open: Show Remaining File Diffs** to open burst overflow comparisons. Repeated-edit consistency and language-specific exclusion improvements remain tracked in `TASKS.md`.
 
 ## Integration and limitations
 
@@ -47,7 +51,7 @@ The bridge validates authentication, event size, timestamp freshness, and worksp
 
 ## Troubleshooting and removal
 
-If a direct IDE edit does not open, check `/hooks` trust and activation, restart VS Code, confirm the file is eligible and within the workspace, and close duplicate windows on the same workspace. Missing or changed session metadata also causes the hook to skip delivery. A shell-based edit is intentionally ignored.
+If a direct IDE edit does not open, check `/hooks` trust and activation, restart VS Code, confirm the file is eligible, within the workspace, and has unstaged Git changes, and close duplicate windows on the same workspace. Missing or changed session metadata also causes the hook to skip delivery. Check the **Codex Auto Open** Output channel for skipped-comparison reasons. A shell-based edit is intentionally ignored.
 
 To remove the companion extension and standalone user hook:
 
@@ -68,6 +72,6 @@ npm test --prefix vscode-extension
 npm run test:host --prefix vscode-extension
 ```
 
-The Extension Host suite uses a disposable profile and workspace. It submits synthetic IDE transcript metadata through the real hook, checks permanent foreground tabs, exclusions, deduplication, and burst limits, and verifies CLI/exec rejection even with inherited VS Code variables and a bridge descriptor. It does not invoke a real Codex agent.
+The Extension Host suite uses a disposable profile and workspace. It submits synthetic IDE transcript metadata through the real hook, checks permanent foreground diff tabs, staged/index content, empty baselines, renames, nested repositories, non-repository folders, exclusions, deduplication, and burst limits, and verifies CLI/exec rejection even with inherited VS Code variables and a bridge descriptor. It does not invoke a real Codex agent.
 
-For live verification, ask the Codex VS Code extension to create, modify, and rename `.rs`, `.py`, `.jl`, and `.lean` files. Check repeated edits after switching tabs, then run the language's build/test/dependency commands and confirm their side effects stay closed. `TASKS.md` tracks these pending checks and the remaining reliability work.
+For live verification, ask the Codex VS Code extension to create, modify, and rename `.rs`, `.py`, `.jl`, and `.lean` files. Verify that the Git diff opens rather than an ordinary file tab. Check repeated edits after switching tabs, then run the language's build/test/dependency commands and confirm their side effects stay closed. `TASKS.md` tracks these pending checks and the remaining reliability work.

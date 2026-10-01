@@ -51,7 +51,7 @@ async function waitForReveal(result: Promise<void>): Promise<void> {
 }
 
 // Verify the real hook, HTTP bridge, queue, and editor options work together.
-test('reports scoped edits to permanent tabs with configured focus in the owning window', async () => {
+test('reports scoped edits to permanent diffs with configured focus in the owning window', async () => {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'codex-pipeline-test-'));
   const firstRoot = path.join(root, 'first');
   const secondRoot = path.join(root, 'second');
@@ -62,16 +62,33 @@ test('reports scoped edits to permanent tabs with configured focus in the owning
   let preserveFocus = false;
   let completeReveal!: () => void;
   let revealed = new Promise<void>(resolve => { completeReveal = resolve; });
-  const fileUri = (name: string) => ({ toString: () => `file://${name}` });
+  // Create URI stand-ins for working-tree and virtual baseline documents.
+  const fileUri = (name: string, scheme = 'file'): vscode.Uri => ({
+    fsPath: name, path: name, scheme, toString: () => `${scheme}://${name}`,
+    with: (changes: { scheme?: string }) => fileUri(name, changes.scheme ?? scheme),
+  } as vscode.Uri);
+  // Represent native diff tabs for the reveal API's active-tab check.
+  // The pipeline fixture starts without an active tab.
+  // Tests capture the command instead of drawing an actual editor.
+  class TabInputTextDiff {}
   const api = {
-    Uri: { file: fileUri },
-    workspace: { openTextDocument: async (uri: ReturnType<typeof fileUri>) => ({ uri }) },
-    window: {
-      activeTextEditor: undefined,
-      tabGroups: { activeTabGroup: { activeTab: undefined } },
-      showTextDocument: async (document: { uri: ReturnType<typeof fileUri> },
-        options: { preserveFocus: boolean; preview: boolean }) => {
-        reveals.push({ file: document.uri.toString(), ...options });
+    Uri: { file: fileUri }, ViewColumn: { Active: -1 }, TabInputTextDiff,
+    extensions: { getExtension: () => ({ isActive: true, exports: {
+      enabled: true, getAPI: () => ({
+        // Simulate untracked edits while testing the real hook and HTTP bridge.
+        openRepository: async () => ({ rootUri: fileUri(firstRoot), status: async () => {},
+          state: { mergeChanges: [], workingTreeChanges: [], untrackedChanges: [
+            { uri: fileUri(file), status: 7 }, { uri: fileUri(path.join(firstRoot, 'keep-focus.txt')), status: 7 },
+          ] } }),
+      }),
+    } }) },
+    window: { tabGroups: { activeTabGroup: { activeTab: undefined } } },
+    commands: {
+      // Capture diff options after the hook, bridge, and queue have validated the edit.
+      executeCommand: async (command: string, _original: vscode.Uri, modified: vscode.Uri,
+        _title: string, options: { preserveFocus: boolean; preview: boolean }) => {
+        assert.equal(command, 'vscode.diff');
+        reveals.push({ file: modified.toString(), preserveFocus: options.preserveFocus, preview: options.preview });
         completeReveal();
       },
     },

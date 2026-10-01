@@ -97,7 +97,7 @@ async function handleRequest(
   }
 }
 
-// Start a window-local listener and publish its private descriptor for new terminals.
+// Start a window-local listener and publish its private descriptor for IDE discovery.
 export async function startBridge(
   workspaceFolders: readonly string[],
   onEdit: (event: EditEvent) => Promise<void>,

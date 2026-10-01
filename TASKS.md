@@ -10,7 +10,7 @@ Prioritize Rust, Python, Julia, and Lean workflows. Direct edits to their source
 
 ## Status
 
-CLI routing, Codex plugin packaging, terminal descriptor injection, and Bash workspace snapshots have been removed from the source. A standalone IDE hook now requires matching VS Code transcript metadata before reporting explicit edits. Python regression tests, TypeScript checks, extension unit/pipeline tests, and the isolated Extension Host suite pass. The host measured 222 ms from synthetic hook submission to an active tab. Installation migration, live IDE checks, and the remaining opening-consistency work are pending; the revised acceptance criteria are not yet fully verified. The next implementation step is Git diff opening; the current editor still opens ordinary file tabs.
+CLI routing, Codex plugin packaging, terminal descriptor injection, and Bash workspace snapshots have been removed from the source. A standalone IDE hook now requires matching VS Code transcript metadata before reporting explicit edits. Python regression tests, TypeScript checks, extension unit/pipeline tests, and the isolated Extension Host suite pass. The diff host checks measured 241 ms from synthetic hook submission to an active permanent diff tab. Installation migration, live IDE checks, and the remaining opening-consistency work are pending; the revised acceptance criteria are not yet fully verified. Git diff opening is implemented using VS Code's Git integration: index-to-working-tree comparisons, empty baselines for untracked files, and skipped-comparison diagnostics. Automated diff validation passes; live Codex IDE validation remains pending.
 
 ## Existing foundation
 
@@ -46,18 +46,19 @@ These components can be reused, but their behavior must pass the revised accepta
 
 **Done when:** Direct Codex edits in Rust, Python, Julia, and Lean open, while their build, test, precompile, dependency, and generator commands open no files due to side effects.
 
-## Next implementation step — Open the changed file's Git diff
+## Git diff opening — implementation and validation Open the changed file's Git diff
 
-- [ ] Replace ordinary file opening with VS Code's diff editor for verified IDE edit events, including files selected through the overflow command.
-- [ ] Use the owning Git repository's index version as the baseline and the current working-tree file as the modified side, matching the unstaged Git Changes view. This displays all unstaged changes in the file, including changes made before the latest Codex edit; it is not a per-tool-edit snapshot.
-- [ ] Resolve the correct repository for multi-root workspaces and nested repositories; never compare against another repository's baseline.
-- [ ] Show newly created/untracked files against an empty baseline. For renames, use the original indexed path when available and show the destination on the modified side.
-- [ ] Define behavior for files outside a Git repository, unavailable Git integration, ignored files, conflicts, and files with no working-tree diff. Skip with a concise diagnostic when a meaningful Git diff cannot be opened; do not silently fall back to a normal file tab.
-- [ ] Preserve foreground/permanent defaults and configured focus/preview settings for diff tabs.
-- [ ] Reuse an existing diff tab for the same baseline and destination, bring background diffs forward, and pin an active preview diff when required. An ordinary file tab must not prevent opening its diff.
-- [ ] Add tests for tracked edits, files with staged and unstaged changes, untracked files, renames, repository selection, unsupported cases, and repeated diff reveals.
-- [ ] Update the real Extension Host checks to inspect diff tabs and their original/modified URIs, then verify live IDE edits open the expected Git comparison.
-- [ ] Update README, setting descriptions, and commands to describe diff opening after implementation.
+- [x] Replace ordinary file opening with VS Code's diff editor for verified IDE edit events, including files selected through the overflow command.
+- [x] Use the owning Git repository's index version as the baseline and the current working-tree file as the modified side, matching the unstaged Git Changes view. This displays all unstaged changes in the file, including changes made before the latest Codex edit; it is not a per-tool-edit snapshot.
+- [x] Resolve the correct repository for multi-root workspaces and nested repositories; never compare against another repository's baseline.
+- [x] Show newly created/untracked files against an empty baseline. For renames, use the original indexed path when available and show the destination on the modified side.
+- [x] Define behavior for files outside a Git repository, unavailable Git integration, ignored files, conflicts, and files with no working-tree diff. Skip with a concise diagnostic when a meaningful Git diff cannot be opened; do not silently fall back to a normal file tab.
+- [x] Preserve foreground/permanent defaults and configured focus/preview settings for diff tabs.
+- [x] Reuse an existing diff tab for the same baseline and destination, bring background diffs forward, and pin an active preview diff when required. An ordinary file tab must not prevent opening its diff.
+- [x] Add tests for tracked edits, files with staged and unstaged changes, untracked files, renames, repository selection, unsupported cases, and repeated diff reveals.
+- [x] Update the real Extension Host checks to inspect diff tabs and their original/modified URIs.
+- [ ] Verify live Codex IDE edits open the expected Git comparison after installation.
+- [x] Update README, setting descriptions, and commands to describe diff opening after implementation.
 
 **Done when:** A supported Codex IDE edit reveals the changed file's Git diff, with the indexed baseline on the original side and current content on the modified side, instead of opening an ordinary file tab.
 

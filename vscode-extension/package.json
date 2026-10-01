@@ -1,7 +1,7 @@
 {
   "name": "codex-auto-open",
   "displayName": "Codex Auto Open",
-  "description": "Open files edited by Codex in the current VS Code window.",
+  "description": "Open Git diffs for files edited by Codex in the current VS Code window.",
   "version": "0.1.0",
   "publisher": "local",
   "private": true,
@@ -22,7 +22,7 @@
     "commands": [
       {
         "command": "codexAutoOpen.showRemaining",
-        "title": "Show Remaining Changed Files",
+        "title": "Show Remaining File Diffs",
         "category": "Codex Auto Open"
       }
     ],
@@ -32,19 +32,19 @@
         "codexAutoOpen.preserveFocus": {
           "type": "boolean",
           "default": false,
-          "description": "Keep focus in Codex when opening an edited file."
+          "description": "Keep focus in Codex when opening an edited file's Git diff."
         },
         "codexAutoOpen.preview": {
           "type": "boolean",
           "default": false,
-          "description": "Open edited files as preview tabs rather than pinned tabs."
+          "description": "Open Git diffs as preview tabs rather than pinned tabs."
         },
         "codexAutoOpen.revealDelayMs": {
           "type": "integer",
           "default": 150,
           "minimum": 0,
           "maximum": 5000,
-          "description": "Wait this many milliseconds to collect edits before opening tabs."
+          "description": "Wait this many milliseconds to collect edits before opening diff tabs."
         },
         "codexAutoOpen.dedupeMs": {
           "type": "integer",
@@ -58,7 +58,7 @@
           "default": 5,
           "minimum": 1,
           "maximum": 50,
-          "description": "Maximum number of tabs opened automatically for one Codex turn."
+          "description": "Maximum number of diff tabs opened automatically for one Codex turn."
         },
         "codexAutoOpen.exclude": {
           "type": "array",

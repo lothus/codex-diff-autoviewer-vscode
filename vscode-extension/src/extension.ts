@@ -2,10 +2,11 @@ import { promises as fs } from 'node:fs';
 import * as vscode from 'vscode';
 import { Bridge, EditEvent, startBridge } from './bridge';
 import { EditQueue, QueueOptions } from './editQueue';
-import { revealFile } from './editor';
+import { EMPTY_DIFF_SCHEME, revealFile } from './editor';
 import { eligibleTextFile } from './fileFilter';
 
 const SHOW_REMAINING_COMMAND = 'codexAutoOpen.showRemaining';
+let diagnostics: vscode.OutputChannel | undefined;
 let bridge: Bridge | undefined;
 let queue: EditQueue | undefined;
 let workspaceRoots: string[] = [];
@@ -35,17 +36,19 @@ async function acceptsEdit(event: EditEvent): Promise<boolean> {
   return eligibleTextFile(event.path, workspaceRoots, settings().exclude);
 }
 
-// Reveal one text document unless it already has an editor tab.
+// Reveal the edited file in a Git diff and report skipped comparisons.
 async function openEdit(event: EditEvent): Promise<boolean> {
   const { preserveFocus, preview } = settings();
-  return revealFile(vscode, event.path, preserveFocus, preview);
+  return revealFile(vscode, event.path, preserveFocus, preview, message => {
+    diagnostics?.appendLine(`${vscode.workspace.asRelativePath(event.path)}: ${message}`);
+  });
 }
 
 // Offer the remaining Codex files in a picker when automatic opening reaches its limit.
 async function showRemaining(): Promise<void> {
   const files = queue?.remainingFiles() ?? [];
   if (!files.length) {
-    void vscode.window.showInformationMessage('No Codex changed files are waiting to open.');
+    void vscode.window.showInformationMessage('No Codex file diffs are waiting to open.');
     return;
   }
   const items = files.map(event => ({
@@ -56,7 +59,7 @@ async function showRemaining(): Promise<void> {
   }));
   const selected = await vscode.window.showQuickPick(items, {
     canPickMany: true,
-    placeHolder: 'Select Codex changed files to open',
+    placeHolder: 'Select Codex file diffs to open',
   });
   for (const item of selected ?? []) await queue?.openRemaining(item.event.path);
 }
@@ -64,7 +67,7 @@ async function showRemaining(): Promise<void> {
 // Notify once per overflow burst and link to the remaining-file picker.
 function showOverflowNotice(count: number): void {
   void vscode.window.showInformationMessage(
-    `${count} more Codex changed ${count === 1 ? 'file is' : 'files are'} ready to open.`,
+    `${count} more Codex file ${count === 1 ? 'diff is' : 'diffs are'} ready to open.`,
     'View files',
   ).then(choice => {
     if (choice) void vscode.commands.executeCommand(SHOW_REMAINING_COMMAND);
@@ -97,6 +100,13 @@ function queueRefresh(): Promise<void> {
 
 // Activate the edit queue, command, and window-specific listener.
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  diagnostics = vscode.window.createOutputChannel('Codex Auto Open');
+  context.subscriptions.push(diagnostics, vscode.workspace.registerTextDocumentContentProvider(
+    EMPTY_DIFF_SCHEME, {
+      // Supply an empty original document for untracked files.
+      provideTextDocumentContent: () => '',
+    },
+  ));
   queue = new EditQueue(settings, acceptsEdit, openEdit, showOverflowNotice);
   context.subscriptions.push(vscode.commands.registerCommand(SHOW_REMAINING_COMMAND, showRemaining));
   // Clear terminal descriptor injection during activation.
