@@ -6,7 +6,7 @@ import path from 'node:path';
 import * as vscode from 'vscode';
 
 const extensionId = 'local.codex-auto-open';
-const hookScript = path.resolve(__dirname, '../../../codex-plugin/hooks/report_edit.py');
+const hookScript = path.resolve(__dirname, '../../../ide-hooks/report_edit.py');
 
 // Wait for an observable VS Code state change with a bounded deadline.
 async function waitUntil(check: () => Promise<boolean> | boolean, label: string): Promise<void> {
@@ -57,19 +57,22 @@ async function runProcess(command: string, args: string[], input: string | undef
 
 // Report one synthetic successful patch through the real hook and bridge.
 async function reportPatch(descriptor: string, workspace: string, file: string,
-  turnId: string, ide = false): Promise<void> {
+  turnId: string, source = 'vscode'): Promise<void> {
   const relative = path.relative(workspace, file);
+  const transcript = path.join(workspace, `${source}-session.jsonl`);
+  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: {
+    id: 'extension-host-test', source, originator: source === 'vscode' ? 'codex_vscode' : 'codex_cli_rs',
+  } }) + '\n');
   const payload = {
     hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
     tool_input: { command: `*** Begin Patch\n*** Add File: ${relative}\n+test\n*** End Patch` },
     tool_response: 'Success. Updated the following files:',
-    cwd: workspace, session_id: 'extension-host-test', turn_id: turnId,
+    cwd: workspace, session_id: 'extension-host-test', turn_id: turnId, transcript_path: transcript,
   };
-  const env: NodeJS.ProcessEnv = { ...process.env, VSCODE_PID: String(process.pid) };
-  if (ide) delete env.CODEX_AUTO_OPEN_BRIDGE_FILE;
-  else env.CODEX_AUTO_OPEN_BRIDGE_FILE = descriptor;
-  await runProcess('python3', ide ? [hookScript, '--ide'] : [hookScript],
-    JSON.stringify(payload), env);
+  await runProcess('python3', [hookScript], JSON.stringify(payload), {
+    ...process.env, VSCODE_PID: String(process.pid), TERM_PROGRAM: 'vscode',
+    CODEX_AUTO_OPEN_BRIDGE_FILE: descriptor,
+  });
 }
 
 // Return editor tabs for one workspace file.
@@ -80,11 +83,11 @@ function tabsFor(file: string): vscode.Tab[] {
 
 // Create a file, report its edit, and wait for a permanent editor tab.
 async function openedFile(descriptor: string, workspace: string, relative: string,
-  turnId: string, ide = false): Promise<string> {
+  turnId: string): Promise<string> {
   const file = path.join(workspace, relative);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, `${relative}\n`);
-  await reportPatch(descriptor, workspace, file, turnId, ide);
+  await reportPatch(descriptor, workspace, file, turnId);
   await waitUntil(() => tabsFor(file).length === 1, relative);
   assert.equal(tabsFor(file)[0].isPreview, false);
   return file;
@@ -113,7 +116,14 @@ async function syntheticChecks(descriptor: string, workspace: string): Promise<v
   assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath, first);
   await reportPatch(descriptor, workspace, first, 'repeat');
   assert.equal(tabsFor(first).length, 1, 'repeat edit duplicated the tab');
-  await openedFile(descriptor, workspace, 'ide-route.txt', 'ide-route', true);
+  await openedFile(descriptor, workspace, 'ide-route.txt', 'ide-route');
+  for (const source of ['cli', 'exec']) {
+    const cliFile = path.join(workspace, `${source}-ignored.txt`);
+    await fs.writeFile(cliFile, 'CLI edit\n');
+    await reportPatch(descriptor, workspace, cliFile, source, source);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    assert.equal(tabsFor(cliFile).length, 0, `${source} edit opened a tab`);
+  }
   const excluded = path.join(workspace, 'dist', 'excluded.txt');
   await fs.mkdir(path.dirname(excluded));
   await fs.writeFile(excluded, 'excluded\n');
@@ -133,21 +143,6 @@ async function syntheticChecks(descriptor: string, workspace: string): Promise<v
   console.log('Extension Host synthetic hook checks passed');
 }
 
-// Ask a real Codex CLI process to edit this test workspace and verify its tab.
-async function realCodexCheck(descriptor: string, workspace: string): Promise<void> {
-  const file = path.join(workspace, 'real-codex.txt');
-  const prompt = 'Use apply_patch to create real-codex.txt in this workspace with exactly one line: '
-    + 'real Codex Extension Host test. Do not edit any other files.';
-  const output = await runProcess('codex', ['exec', '--ephemeral', '--json', '--sandbox',
-    'workspace-write', '--cd', workspace, '--skip-git-repo-check', prompt], undefined, {
-    ...process.env, CODEX_AUTO_OPEN_BRIDGE_FILE: descriptor,
-  });
-  assert.match(output, /apply_patch/, 'Codex did not report an apply_patch call');
-  await waitUntil(() => tabsFor(file).length === 1, 'real Codex tab');
-  assert.equal(tabsFor(file)[0].isPreview, false);
-  console.log('Extension Host real Codex edit check passed');
-}
-
 // Run Extension Host checks in the isolated workspace supplied by the launcher.
 export async function run(): Promise<void> {
   const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -157,5 +152,4 @@ export async function run(): Promise<void> {
   await extension.activate();
   const descriptor = await descriptorFor(workspace);
   await syntheticChecks(descriptor, workspace);
-  if (process.env.AUTO_OPEN_TEST_REAL_CODEX === '1') await realCodexCheck(descriptor, workspace);
 }

@@ -5,7 +5,6 @@ import { EditQueue, QueueOptions } from './editQueue';
 import { revealFile } from './editor';
 import { eligibleTextFile } from './fileFilter';
 
-const ENV_NAME = 'CODEX_AUTO_OPEN_BRIDGE_FILE';
 const SHOW_REMAINING_COMMAND = 'codexAutoOpen.showRemaining';
 let bridge: Bridge | undefined;
 let queue: EditQueue | undefined;
@@ -73,8 +72,7 @@ function showOverflowNotice(count: number): void {
 }
 
 // Replace this window's listener when its workspace folders change.
-async function refreshBridge(context: vscode.ExtensionContext): Promise<void> {
-  context.environmentVariableCollection.delete(ENV_NAME);
+async function refreshBridge(): Promise<void> {
   const previous = bridge;
   bridge = undefined;
   workspaceRoots = [];
@@ -86,15 +84,14 @@ async function refreshBridge(context: vscode.ExtensionContext): Promise<void> {
   try {
     workspaceRoots = await Promise.all(folders.map(folder => fs.realpath(folder)));
     bridge = await startBridge(workspaceRoots, async event => { queue?.submit(event); });
-    context.environmentVariableCollection.replace(ENV_NAME, bridge.descriptorPath);
   } catch {
     void vscode.window.showWarningMessage('Codex Auto Open could not start its local listener.');
   }
 }
 
 // Serialize listener changes so an older workspace cannot replace a newer one.
-function queueRefresh(context: vscode.ExtensionContext): Promise<void> {
-  refreshTask = refreshTask.catch(() => {}).then(() => refreshBridge(context));
+function queueRefresh(): Promise<void> {
+  refreshTask = refreshTask.catch(() => {}).then(() => refreshBridge());
   return refreshTask;
 }
 
@@ -102,10 +99,11 @@ function queueRefresh(context: vscode.ExtensionContext): Promise<void> {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   queue = new EditQueue(settings, acceptsEdit, openEdit, showOverflowNotice);
   context.subscriptions.push(vscode.commands.registerCommand(SHOW_REMAINING_COMMAND, showRemaining));
-  context.environmentVariableCollection.persistent = false;
-  await queueRefresh(context);
+  // Clear terminal descriptor injection during activation.
+  context.environmentVariableCollection.delete('CODEX_AUTO_OPEN_BRIDGE_FILE');
+  await queueRefresh();
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-    void queueRefresh(context);
+    void queueRefresh();
   }));
 }
 

@@ -1,90 +1,73 @@
 # Codex Auto Open for VS Code
 
-Codex Auto Open opens files changed by Codex in your current VS Code workspace. After an edit, an eligible text file appears in a permanent foreground tab by default, whether you use the Codex IDE sidebar or Codex CLI in a VS Code integrated terminal.
+Codex Auto Open reveals files directly edited by the Codex VS Code extension in the owning window's editor viewport. Eligible files open as permanent foreground tabs by default. Rust, Python, Julia, and Lean source files use the same edit detection.
 
-This is an **early local build**. Local IDE edits and a CLI `apply_patch` edit have opened tabs, but a fresh install on another machine and plugin-only hook loading are unverified.
+Codex CLI/CMD sessions are unsupported and ignored, including those in VS Code integrated terminals. Generic shell writes, builds, tests, generators, and dependency commands do not produce automatic opens. No workspace watcher or shell snapshot scan is used.
 
-## Quick start
+This is an early local build. The IDE-only integration uses session transcript metadata observed locally with Codex backend versions 0.159.2 and 0.155.0-alpha.16.3. Live IDE delivery after this revision and a fresh installation on another machine still require verification.
 
-1. Have Python 3.9 or newer, Node.js 22 or newer with npm, the VS Code `code` command on `PATH`, and **codex-cli 0.156.1 or newer** with `codex plugin` commands. Version 0.156.1 is the minimum supported Codex CLI version for this release. Open a **local file workspace** in VS Code.
-2. From this repository's root, install both components:
+## Install and update
 
-   ```sh
-   python3 scripts/setup_local.py install
-   ```
-
-3. Restart VS Code and Codex. In Codex, run `/hooks` and check that the **Codex Auto Open IDE bridge** user hooks are **Trusted** and **Active**. Review plugin hooks too if they appear. Codex may require another review after an update.
-4. To use Codex CLI, open a **new integrated terminal** in the restarted VS Code window and start `codex` there. The new terminal receives this window's bridge descriptor.
-5. For a first check, ask Codex in the IDE sidebar or that CLI session: “Create `auto-open-check.txt` in this workspace with the line `hello`.” The new file should open as a permanent tab in the foreground. Ask Codex to edit the same file again to check that its tab is reused.
-
-The setup command runs `npm ci`, packages a VSIX under `dist/`, installs the extension, registers a dedicated local Codex marketplace, installs a copied plugin, and adds shared hooks to `$CODEX_HOME/hooks.json` (or `~/.codex/hooks.json`). It preserves unrelated user hook groups.
-
-## Using Codex in VS Code
-
-In the **Codex IDE sidebar**, ask Codex to create or edit a file in the open workspace. The shared user hook reports the finished edit to the VS Code extension. The IDE path can find a window descriptor when `VSCODE_PID` is present and exactly one matching window is available. If two windows have the same workspace open, the IDE hook leaves that ambiguous event unopened.
-
-For **Codex CLI**, start `codex` in a new VS Code integrated terminal. That terminal inherits `CODEX_AUTO_OPEN_BRIDGE_FILE`, which routes edits to its owning window, including when another window has the same workspace open. If that value is missing, the hook can use [VS Code's `TERM_PROGRAM` marker](https://code.visualstudio.com/docs/terminal/shell-integration) to find exactly one live bridge for the current workspace. A CLI session launched outside VS Code without either signal does not open tabs. After a VS Code workspace change, start another new terminal.
-
-By default, eligible files open after a 150 ms collection delay. An edited file already in a background tab comes forward, and an active preview tab is pinned. Events for the same path are suppressed for one second. The extension automatically opens at most **five tabs per Codex turn**; when more files change, choose **View files** in the notification or run **Codex Auto Open: Show Remaining Changed Files** from the Command Palette. Events without a turn ID are grouped in two-second windows per session.
-
-| Setting | Default | Effect |
-| --- | --- | --- |
-| `codexAutoOpen.preserveFocus` | `false` | Keep focus in Codex or the terminal when `true`. |
-| `codexAutoOpen.preview` | `false` | Use preview tabs when `true`. |
-| `codexAutoOpen.revealDelayMs` | `150` | Delay in milliseconds before opening collected edits. |
-| `codexAutoOpen.dedupeMs` | `1000` | Suppress repeated events for a file within this interval. |
-| `codexAutoOpen.maxTabsPerTurn` | `5` | Maximum tabs opened automatically per turn. |
-| `codexAutoOpen.exclude` | `[]` | Extra workspace-relative globs, such as `**/*.log`. |
-
-The extension skips files in `.git`, `.venv`, `node_modules`, `out`, `dist`, `build`, `coverage`, `.next`, and `.cache`. It also skips common binary extensions and files that appear binary in their first 4 KiB. Missing, inaccessible, excluded, or out-of-workspace files do not open.
-
-## If a tab does not open
-
-1. Run `/hooks` in Codex and confirm the **Codex Auto Open IDE bridge** user hooks are **Trusted** and **Active**. Review changed hooks after an update.
-2. Restart VS Code after installing. Keep a local file workspace open; the extension shows a warning if its listener cannot start.
-3. For CLI, start Codex in a new integrated terminal. Run `printf '%s\n' "$CODEX_AUTO_OPEN_BRIDGE_FILE"` there; it should show the path to an existing `bridge.json`. If it is blank or stale, open another new terminal.
-4. Check that the changed file is an eligible text file inside that window's workspace. For IDE sidebar edits, close duplicate VS Code windows on the same workspace if routing is ambiguous.
-
-## Update or remove
-
-After pulling changes, rebuild and reinstall from the repository root, then restart VS Code and Codex and review `/hooks` again:
+Have Python 3.9 or newer, Node.js 22 or newer with npm, the VS Code `code` command on `PATH`, and the Codex VS Code extension installed. Open a local file workspace, then run from this repository's root:
 
 ```sh
 python3 scripts/setup_local.py install
 ```
 
-To remove the extension, plugin, shared user hook groups, and dedicated local marketplace:
+The command builds and installs the VSIX and copies a standalone reporting hook under `$CODEX_HOME/hooks/codex-auto-open/` (default `~/.codex/hooks/codex-auto-open/`). It registers one `PostToolUse` user hook, replacing this project's older user hooks while preserving unrelated groups. No Codex plugin or marketplace is installed; the Codex CLI is not an installation dependency.
+
+Restart VS Code and Codex, then use `/hooks` to review and trust the **Codex Auto Open IDE bridge** hook. Review it again after updates when requested.
+
+If upgrading from the former plugin build, remove **codex-auto-open@codex-auto-open-local** and its dedicated **codex-auto-open-local** marketplace from Codex's plugin management before using this revision. Previously installed plugin copies have their own old hooks; changing the repository does not uninstall them.
+
+## Use and settings
+
+Ask Codex in the VS Code sidebar to create or edit a workspace file using a direct edit tool such as `apply_patch`. The hook reports explicit destinations after a successful edit. Renames open the destination; deleted, missing, binary, excluded, or out-of-workspace files remain closed. Shell commands that edit files are ignored.
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `codexAutoOpen.preserveFocus` | `false` | Keep focus in Codex when `true`. |
+| `codexAutoOpen.preview` | `false` | Use preview tabs when `true`. |
+| `codexAutoOpen.revealDelayMs` | `150` | Collect edit events for this many milliseconds. |
+| `codexAutoOpen.dedupeMs` | `1000` | Suppress repeated events for a path within this interval. |
+| `codexAutoOpen.maxTabsPerTurn` | `5` | Limit automatic opens per turn. |
+| `codexAutoOpen.exclude` | `[]` | Additional workspace-relative exclusion globs. |
+
+Use **Codex Auto Open: Show Remaining Changed Files** to open burst overflow. Repeated-edit consistency and language-specific exclusion improvements remain tracked in `TASKS.md`.
+
+## Integration and limitations
+
+The standalone user hook handles `apply_patch` and recognized structured file-write tool destinations. Shell execution has no reporting route, so Rust compilation, Python caches, Julia precompilation, and Lean build side effects do not trigger events.
+
+The hook reads only the bounded first transcript record and requires matching session ID, `source: vscode`, and `originator: codex_vscode`. Missing, unknown, malformed, and CLI metadata are ignored, regardless of inherited terminal environment variables or bridge paths. This metadata check supports the observed local format; it is not a security boundary against another process running as the same user. OpenAI documents `transcript_path` but warns that [transcript format is not a stable hook interface](https://learn.chatgpt.com/docs/hooks).
+
+Each VS Code window writes a private descriptor for an authenticated listener on `127.0.0.1`. The hook discovers exactly one live descriptor matching its working directory. Multiple windows on the same workspace are ambiguous and ignored. Workspace changes rotate the listener and token; shutdown removes the descriptor. Terminals receive no descriptor injection.
+
+The bridge validates authentication, event size, timestamp freshness, and workspace scope. The editor checks scope and content again before opening. Tokens and file contents are not logged. Remote SSH, WSL, containers, and unknown transcript formats are unverified.
+
+## Troubleshooting and removal
+
+If a direct IDE edit does not open, check `/hooks` trust and activation, restart VS Code, confirm the file is eligible and within the workspace, and close duplicate windows on the same workspace. Missing or changed session metadata also causes the hook to skip delivery. A shell-based edit is intentionally ignored.
+
+To remove the companion extension and standalone user hook:
 
 ```sh
 python3 scripts/setup_local.py remove
 ```
 
-The VSIX in `dist/` is a local build artifact. The remove command does not delete that artifact.
+Removal preserves unrelated hooks and leaves local VSIX build artifacts in `dist/`. It does not remove plugin copies installed by the former build; remove those through Codex's plugin management.
 
-## How it works and security boundaries
+## Development and verification
 
-The local setup installs the plugin's hook script as **shared user hooks** for both IDE and CLI sessions. `PostToolUse` handles `apply_patch`, Bash, and recognized MCP file-write tools; `PreToolUse` records a Bash snapshot. For a successful patch, the hook reads explicit destination headers. For recognized structured tools, it reads destination fields. Deleted files have no tab to open; moved files are reported at their destination. Relative paths resolve from the hook's `cwd`. Only existing regular files inside the active workspace are sent.
-
-For Bash, a private per-call snapshot compares file metadata before and after the command. The scan skips common generated directories and stops after 5,000 files or 2,000 directories; a scan over either limit reports no Bash edits for that call. A separate process changing a file during the command can be attributed to Codex. Command text and Bash output are not used as changed-file lists, and there is no default workspace-wide watcher.
-
-Each VS Code window starts a listener on `127.0.0.1` and writes a private `bridge.json` outside the repository. New integrated terminals inherit its path through `CODEX_AUTO_OPEN_BRIDGE_FILE`. On POSIX, the descriptor must be a regular file owned by the current user with mode `0600`. It contains the listener port, a random bearer token, process ID, and absolute workspace folders. The hook silently skips delivery when it has no valid descriptor or the listener is unavailable; it does not print the token or event payload.
-
-The listener accepts authenticated `POST /v1/events` requests with one versioned `create`, `modify`, or `rename` event. It rejects bodies over 8 KiB, events outside a 30-second freshness window, non-files, and paths outside the window's workspace. The editor checks file scope and content again before opening a tab. Workspace changes rotate the descriptor and token; window shutdown removes the descriptor. Remote SSH, WSL, and container combinations remain untested; the hook and extension host need the same filesystem and loopback network namespace.
-
-The packaged plugin also declares hooks, but its hooks did not appear in `/hooks` on the tested CLI 0.156.1 build. Plugin-only delivery remains unverified. The shared user hook has delivered local IDE and CLI `apply_patch` events. A real CLI Bash `sed -i` edit produced matching pre/post payloads and an HTTP 204 bridge response; its visual tab result was not observed.
-
-## Development and tests
-
-To run the extension in an Extension Development Host, run `npm install` in `vscode-extension`, open this repository in VS Code, and choose **Run Codex Auto Open** in Run and Debug. Open a new integrated terminal in that host so it receives the descriptor. From the repository root, `python3 scripts/smoke_edit.py` sends a synthetic patch hook event for one new text file; `python3 scripts/smoke_edit.py --count 7` exercises the default five-tab limit. The smoke script tests hook-to-bridge delivery, not Codex plugin loading or attribution.
-
-Run the automated suites from their respective directories:
+Open this repository in VS Code and choose **Run Codex Auto Open** in Run and Debug. Run automated checks from the repository root:
 
 ```sh
 python3 -m unittest discover -s tests -v
-cd vscode-extension
-npm test
+npm run check --prefix vscode-extension
+npm test --prefix vscode-extension
+npm run test:host --prefix vscode-extension
 ```
 
-These cover hook path extraction and Bash snapshots, descriptor privacy, authentication, workspace scope, filtering, and queue behavior. For a real VS Code Extension Host check, run `npm run test:host` in `vscode-extension`. It starts a disposable workspace and VS Code profile, submits patch events through the real hook using both explicit CLI and discovered IDE bridge routes, and verifies permanent tabs, deduplication, exclusions, unrelated writes, and the tab limit with VS Code's editor API. Run `npm run test:live` to add one real `codex exec` edit to that check; it requires a working Codex sign-in and installed, trusted user hooks. Both commands leave your normal VS Code profile alone.
+The Extension Host suite uses a disposable profile and workspace. It submits synthetic IDE transcript metadata through the real hook, checks permanent foreground tabs, exclusions, deduplication, and burst limits, and verifies CLI/exec rejection even with inherited VS Code variables and a bridge descriptor. It does not invoke a real Codex agent.
 
-The Extension Host checks time hook submission to an active permanent tab with the normal 150 ms reveal delay and require it to take less than two seconds. They do not measure keyboard focus inside Codex, and `test:live` exercises the CLI route rather than the IDE agent. Remote hosts, same-workspace duplicate windows, and plugin-only hook delivery remain unverified.
+For live verification, ask the Codex VS Code extension to create, modify, and rename `.rs`, `.py`, `.jl`, and `.lean` files. Check repeated edits after switching tabs, then run the language's build/test/dependency commands and confirm their side effects stay closed. `TASKS.md` tracks these pending checks and the remaining reliability work.

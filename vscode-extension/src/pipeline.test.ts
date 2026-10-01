@@ -10,20 +10,24 @@ import { EditQueue } from './editQueue';
 import { revealFile } from './editor';
 import { eligibleTextFile } from './fileFilter';
 
-const hookScript = path.resolve(__dirname, '../../codex-plugin/hooks/report_edit.py');
+const hookScript = path.resolve(__dirname, '../../ide-hooks/report_edit.py');
 
 // Run the installed hook protocol with one synthetic successful Codex patch payload.
-async function reportPatch(descriptor: string, cwd: string, file: string): Promise<void> {
+async function reportPatch(cwd: string, file: string): Promise<void> {
   const relative = path.relative(cwd, file);
+  const transcript = path.join(cwd, 'session.jsonl');
+  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: {
+    id: 'pipeline-session', source: 'vscode', originator: 'codex_vscode',
+  } }) + '\n');
   const payload = {
     hook_event_name: 'PostToolUse', tool_name: 'apply_patch',
     tool_input: { command: `*** Begin Patch\n*** Add File: ${relative}\n+test\n*** End Patch` },
     tool_response: 'Success. Updated the following files:',
-    cwd, session_id: 'pipeline-session', turn_id: 'pipeline-turn',
+    cwd, session_id: 'pipeline-session', turn_id: 'pipeline-turn', transcript_path: transcript,
   };
   await new Promise<void>((resolve, reject) => {
     const child = spawn('python3', [hookScript], {
-      env: { ...process.env, CODEX_AUTO_OPEN_BRIDGE_FILE: descriptor },
+      env: process.env,
       stdio: ['pipe', 'ignore', 'pipe'],
     });
     let errorOutput = '';
@@ -86,7 +90,7 @@ test('reports scoped edits to permanent tabs with configured focus in the owning
   });
   const second = await startBridge([secondRoot], async event => { secondEvents.push(event); });
   try {
-    await reportPatch(first.descriptorPath, firstRoot, file);
+    await reportPatch(firstRoot, file);
     await waitForReveal(revealed);
     assert.equal(firstEvents.length, 1);
     assert.deepEqual(secondEvents, []);
@@ -95,12 +99,12 @@ test('reports scoped edits to permanent tabs with configured focus in the owning
     await fs.writeFile(focusedFile, 'edited\n');
     preserveFocus = true;
     revealed = new Promise<void>(resolve => { completeReveal = resolve; });
-    await reportPatch(first.descriptorPath, firstRoot, focusedFile);
+    await reportPatch(firstRoot, focusedFile);
     await waitForReveal(revealed);
     assert.deepEqual(reveals[1], {
       file: `file://${focusedFile}`, preserveFocus: true, preview: false,
     });
-    await reportPatch(second.descriptorPath, firstRoot, file);
+    await reportPatch(secondRoot, file);
     assert.deepEqual(secondEvents, []);
   } finally {
     queue.dispose();

@@ -15,8 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     # Launch the installed VS Code binary with disposable profile and workspace paths.
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--real-codex", action="store_true")
-    args = parser.parse_args()
+    parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="codex-auto-open-host-") as temporary:
         base = Path(temporary)
         workspace = base / "workspace"
@@ -24,8 +23,6 @@ def main():
         environment = os.environ.copy()
         for name in ("ELECTRON_RUN_AS_NODE", "VSCODE_CLI", "VSCODE_IPC_HOOK_CLI"):
             environment.pop(name, None)
-        if args.real_codex:
-            environment["AUTO_OPEN_TEST_REAL_CODEX"] = "1"
         executable = Path('/usr/share/code/code')
         if not executable.is_file():
             executable = Path(shutil.which('code') or 'code')
@@ -47,8 +44,7 @@ def main():
                 print(line)
         if result.returncode != 0:
             raise RuntimeError(f"Extension Host exited {result.returncode}: {output[-4000:]}")
-        expected = "Extension Host real Codex edit check passed" if args.real_codex else (
-            "Extension Host synthetic hook checks passed")
+        expected = "Extension Host synthetic hook checks passed"
         if expected not in output:
             raise RuntimeError("Extension Host did not report completed tests")
 

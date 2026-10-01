@@ -2,119 +2,115 @@
 
 ## Goal
 
-When Codex creates or modifies a file in the current VS Code workspace, open that file in a permanent VS Code editor tab automatically and bring it forward for review. Support both Codex's VS Code extension and Codex CLI running in an integrated VS Code terminal. Opening should happen soon after the edit; users can configure focus preservation if they prefer to stay in Codex.
+When Codex directly creates or edits an eligible file through the Codex VS Code extension, reveal that file's Git diff in the owning VS Code window's editor viewport promptly. By default, bring the diff forward in a permanent tab; preserve the configurable focus and preview behavior.
+
+Only the Codex VS Code extension is a supported source of edits. Codex CLI/CMD sessions, including sessions in VS Code integrated terminals, must not trigger opening. Compilation, tests, generators, and other incidental filesystem changes must not trigger opening, even when Codex runs the command.
+
+Prioritize Rust, Python, Julia, and Lean workflows. Direct edits to their source files and project configuration should open consistently; language-specific build, cache, dependency, and test artifacts should not open merely because a command changed them.
 
 ## Status
 
-The requested **local VS Code IDE and integrated CLI workflows pass** the acceptance checks below. The real Extension Host suite and a real `codex exec` edit also pass. The minimum supported Codex CLI version is 0.156.1. The remaining unchecked items concern plugin-only delivery and version coverage for that route, additional tool payloads, remote platforms, and public release. They are not prerequisites for the working shared-user-hook local setup described in the README.
+CLI routing, Codex plugin packaging, terminal descriptor injection, and Bash workspace snapshots have been removed from the source. A standalone IDE hook now requires matching VS Code transcript metadata before reporting explicit edits. Python regression tests, TypeScript checks, extension unit/pipeline tests, and the isolated Extension Host suite pass. The host measured 222 ms from synthetic hook submission to an active tab. Installation migration, live IDE checks, and the remaining opening-consistency work are pending; the revised acceptance criteria are not yet fully verified. The next implementation step is Git diff opening; the current editor still opens ordinary file tabs.
 
-## Architecture decision
+## Existing foundation
 
-Build a Codex-side hook and a companion editor extension:
+- [x] Package a standalone IDE hook and companion VS Code extension with a local setup command; no Codex plugin or marketplace is installed.
+- [x] Extract explicit patch and recognized structured write-tool destinations.
+- [x] Provide an authenticated loopback bridge with private descriptors, workspace scope checks, and descriptor lifecycle management.
+- [x] Use VS Code editor APIs with focus, preview, reveal-delay, exclusion, deduplication, and burst-limit settings.
+- [x] Provide hook, bridge, queue, editor, and Extension Host tests.
 
-1. A Codex plugin packages the hook script. The local setup also registers a user hook that serves both CLI and IDE sessions; plugin-only CLI hook loading is still under investigation. Both routes use the same edit reporting script.
-2. A companion VS Code extension receives edit events and calls `vscode.window.showTextDocument`. Codex hooks have no VS Code editor API.
+These components can be reused, but their behavior must pass the revised acceptance criteria.
 
-Use a local, authenticated bridge between the hook and extension. Integrated terminals receive a window-specific descriptor. The IDE hook discovers a matching private descriptor only when exactly one window owns the workspace. No file watcher runs by default because watcher events alone cannot prove that Codex caused a change. Validate actual hook delivery in both Codex surfaces before claiming end-to-end support.
+## Task 1 — Restrict delivery to the Codex VS Code extension
 
-## Current implementation
+- [ ] Capture real IDE hook payloads to verify that `transcript_path` and session IDs match the observed VS Code metadata. Local transcript headers from backend versions 0.159.2 and 0.155.0-alpha.16.3 identify `source: vscode` and `originator: codex_vscode`; live hook delivery remains to be checked.
+- [x] Require verified IDE origin before reporting an edit. An IDE command-line flag, inherited VS Code environment variables, or possession of a bridge descriptor alone must not authorize a CLI session.
+- [x] Remove CLI/CMD routing, integrated-terminal descriptor injection, and terminal discovery fallbacks.
+- [x] Update hook registration and local install/removal for a standalone IDE hook; replace obsolete project-owned Bash user hooks and preserve unrelated user hooks.
+- [ ] Verify migration of an existing installation and removal of its previously installed Codex plugin/marketplace copies.
+- [ ] Keep IDE routing scoped to the owning window and workspace; reject ambiguous routing rather than opening in an arbitrary window.
+- [ ] If available hook metadata cannot distinguish IDE from CLI reliably, resolve the integration approach before claiming IDE-only support.
 
-- [x] Add the portable CLI plugin manifest and `PostToolUse` hook for `apply_patch`.
-- [x] Parse patch destinations, restrict them to existing workspace files, and send versioned events through a private loopback bridge descriptor.
-- [x] Test patch parsing, path boundaries, descriptor permissions, and authenticated local delivery.
-- [x] Verify that the local IDE loads the trusted user hook and delivers `apply_patch` edits. Its successful response has an `Exit code: 0` wrapper.
-- [x] Capture a real CLI `apply_patch` payload and route it through the installed user hook to a visible VS Code tab.
-- [x] Implement the VS Code listener and window-specific descriptor lifecycle for local file workspaces.
-- [x] Add editor reveal settings, file filtering, deduplication, and per-turn burst limits.
-- [x] Add a local packaging and setup command for both components.
-- [x] Correlate Bash edits with bounded before/after snapshots and recognize structured write-tool destinations.
-- [x] Add shared CLI/IDE user-hook registration, private descriptor discovery, and stale process filtering; local `apply_patch` delivery passed in both surfaces.
-- [x] Fall back to unique workspace bridge discovery when a VS Code integrated terminal lacks the injected descriptor; a normal `apply_patch` edit and a new file opened in the active window without per-edit setup.
+**Done when:** IDE edits reach the owning window, while interactive CLI and `codex exec` edits are ignored both inside and outside VS Code, including when they inherit VS Code environment variables.
 
-## Feature 1 — Project and packaging
+## Task 2 — Report explicit edits, exclude command side effects
 
-- [x] Create the VS Code extension project with TypeScript, extension manifest, activation, commands, settings, and a development launch configuration.
-- [x] Create a portable Codex plugin manifest (`plugin.json`) and `hooks/hooks.json` with a bundled command script.
-- [x] Document codex-cli 0.156.1 as the minimum supported version for this release; the shared user hook delivered real CLI edits on that version. Earlier CLI versions are outside the supported range.
-- [x] Provide one local setup flow that installs the VS Code extension, CLI plugin, and shared user hook, including hook trust review instructions.
-- [x] Document local development, packaging, installation, upgrade, and removal for both components.
+- [x] Remove Bash before/after workspace snapshots and their pre-tool hooks as an edit-attribution mechanism.
+- [ ] Report only successful direct edit operations with explicit destination paths, initially `apply_patch` and validated structured file-write tools supported by the IDE.
+- [x] Treat generic shell execution as unsupported for automatic opening unless a future integration supplies reliable direct-edit provenance. Do not infer edits from command text, output, timestamps, or workspace differences.
+- [ ] Preserve create, modify, and rename-destination handling; do not open deleted files or paths from failed operations.
+- [ ] Retain path normalization, symlink safety, workspace boundaries, binary detection, and user exclusions.
+- [ ] Review generated-directory exclusions for Rust (`target`), Python (`__pycache__`, `.pytest_cache`, virtual environments, and packaging output), Julia (compiled caches and project-local depots), and Lean (`.lake` build and dependency output). Use these as secondary safeguards; avoid blanket exclusions of source directories.
+- [ ] Cover command-generated files outside conventional build directories, including generated source files and dependency updates to `Cargo.lock`, Python lockfiles, Julia `Manifest.toml`, and Lean `lake-manifest.json`. Directory exclusions alone must not determine whether Codex directly edited a file; explicit edits to eligible configuration and lockfiles should still open.
 
-**Done when:** A fresh installation can enable both components without modifying the Codex VS Code extension itself.
+**Done when:** Direct Codex edits in Rust, Python, Julia, and Lean open, while their build, test, precompile, dependency, and generator commands open no files due to side effects.
 
-## Feature 2 — Detect Codex edits
+## Next implementation step — Open the changed file's Git diff
 
-- [x] Capture the successful `apply_patch` response format from a live local IDE hook invocation.
-- [ ] Capture real `PostToolUse` payloads for shell and other write-capable tools in the IDE and CLI. (`apply_patch` payloads were captured in both; a CLI Bash `sed -i` payload reached the bridge.)
-- [x] Parse explicit paths from patch and recognized structured write-tool input; never assume every shell command exposes its changed paths.
-- [x] For Bash calls, compare a bounded workspace snapshot around the tool execution.
-- [x] Handle create, modify, rename, and delete results; open only paths that exist as regular files after the operation.
-- [x] Normalize relative paths against the hook's working directory, resolve symlinks safely, and restrict results to open workspace folders.
-- [x] Deduplicate repeated edit signals for the same file within a configurable short interval.
+- [ ] Replace ordinary file opening with VS Code's diff editor for verified IDE edit events, including files selected through the overflow command.
+- [ ] Use the owning Git repository's index version as the baseline and the current working-tree file as the modified side, matching the unstaged Git Changes view. This displays all unstaged changes in the file, including changes made before the latest Codex edit; it is not a per-tool-edit snapshot.
+- [ ] Resolve the correct repository for multi-root workspaces and nested repositories; never compare against another repository's baseline.
+- [ ] Show newly created/untracked files against an empty baseline. For renames, use the original indexed path when available and show the destination on the modified side.
+- [ ] Define behavior for files outside a Git repository, unavailable Git integration, ignored files, conflicts, and files with no working-tree diff. Skip with a concise diagnostic when a meaningful Git diff cannot be opened; do not silently fall back to a normal file tab.
+- [ ] Preserve foreground/permanent defaults and configured focus/preview settings for diff tabs.
+- [ ] Reuse an existing diff tab for the same baseline and destination, bring background diffs forward, and pin an active preview diff when required. An ordinary file tab must not prevent opening its diff.
+- [ ] Add tests for tracked edits, files with staged and unstaged changes, untracked files, renames, repository selection, unsupported cases, and repeated diff reveals.
+- [ ] Update the real Extension Host checks to inspect diff tabs and their original/modified URIs, then verify live IDE edits open the expected Git comparison.
+- [ ] Update README, setting descriptions, and commands to describe diff opening after implementation.
 
-**Done when:** Codex edits produce file events and unrelated editor, Git, build, or test writes do not cause automatic opening in the default mode.
+**Done when:** A supported Codex IDE edit reveals the changed file's Git diff, with the indexed baseline on the original side and current content on the modified side, instead of opening an ordinary file tab.
 
-## Feature 3 — Local hook-to-editor bridge
+## Task 3 — Make viewport opening consistent
 
-- [x] Start a loopback listener or equivalent local IPC endpoint in the VS Code extension; bind it to the current VS Code window/workspace.
-- [x] Generate an ephemeral secret or token for the bridge and make it available to the hook without placing it in logs or the repository.
-- [x] Define a small versioned event message with path, operation, session/turn identifier when available, and timestamp.
-- [x] Validate authentication, message size, path scope, and stale events; fail quietly if VS Code is closed or the bridge is unavailable.
-- [x] Support multiple VS Code windows and workspaces without opening a file in the wrong window. (A live IDE edit opened only in the owning window with a second VS Code window on a different workspace; the user also tested a Codex edit in the other window and reported that it opened correctly there. Unique IDE window selection and per-window CLI descriptors have unit coverage. Same-workspace IDE windows are deliberately ignored and remain untested live.)
+- [ ] Reproduce missed or inconsistent IDE reveals and trace origin detection, hook delivery, window selection, filtering, queueing, and editor opening to locate failures.
+- [ ] Verify that a single successful edit activates a permanent Git diff tab by default, brings an existing background diff forward, and pins an active preview diff.
+- [ ] Distinguish duplicate delivery from a later genuine edit of the same file; deduplication must not suppress a necessary reveal after the user switches tabs.
+- [ ] Verify edits arriving while the queue is draining and rapid edits to multiple files; define deterministic reveal order and ensure the latest eligible edit within the automatic tab budget is visible after the queue settles.
+- [ ] Review per-turn limits so duplicate events and repeated edits do not unexpectedly consume the budget for distinct files; keep overflow files accessible through the existing command.
+- [ ] Test workspace changes, VS Code restart, stale descriptors, and multiple windows; verify recovery without per-edit setup.
+- [ ] Provide concise diagnostics for rejected or undelivered events without logging bridge secrets or file contents.
 
-**Done when:** An edit from the correct Codex session reaches only the intended VS Code window.
+**Done when:** Repeated supported IDE edits reveal the expected file reliably, with explicit behavior for exclusions, ambiguous routing, focus preservation, and burst overflow.
 
-## Feature 4 — Open files in the editor
+## Task 4 — Validate the revised behavior
 
-- [x] Use VS Code's document and editor APIs to reveal created or modified files.
-- [x] Default to permanent foreground tabs; expose settings for focus behavior, preview versus pinned tabs, and reveal timing.
-- [x] Bring background tabs forward, pin active preview tabs, and avoid duplicate tabs for rapid edits.
-- [x] Queue bursts and enforce a configurable per-turn tab limit; provide a concise notification or command to view any remaining changed files.
-- [x] Skip recognized binary files, generated/build directories, and paths matching user-configured exclusions.
-- [x] Handle missing files, inaccessible files, and editor API failures without interrupting Codex. (Remote workflows still require Feature 5 validation.)
+- [x] Replace CLI success assertions with CLI rejection coverage in hook and Extension Host tests.
+- [ ] Add regression tests for command-generated changes, explicit direct edits, failed edits, repeated edits, duplicate delivery, queue races, and generated-file exclusions across Rust, Python, Julia, and Lean.
+- [x] Run Python tests, TypeScript checks, extension unit tests, and the real VS Code Extension Host suite.
+- [ ] Perform live checks using the Codex VS Code extension: create, modify, rename, multi-file edits, rapid repeated edits, and edits after switching to another tab.
+- [ ] Run Rust `cargo build`, `cargo check`, and `cargo test` from Codex in the IDE; confirm side effects remain unopened and a subsequent direct `.rs` edit opens.
+- [ ] Run Python bytecode compilation, tests, and package build/dependency operations in a disposable project; confirm caches, packaging output, and incidental lockfile changes remain unopened and a subsequent direct `.py` edit opens.
+- [ ] Run Julia package instantiate, precompile, and test operations in a disposable project; confirm caches and incidental `Manifest.toml` changes remain unopened and a subsequent direct `.jl` edit opens.
+- [ ] Run Lean `lake build`, dependency updates, and the project's test/check workflow in a disposable project; confirm `.lake` output and incidental `lake-manifest.json` changes remain unopened and a subsequent direct `.lean` edit opens.
+- [ ] Perform negative live checks with interactive CLI and `codex exec` inside and outside VS Code, including inherited bridge/environment data.
+- [ ] Verify default foreground behavior and configured focus preservation in the real IDE; retain a local target below two seconds from completed edit to visible tab.
+- [ ] Verify upgrade from the current local installation and removal of obsolete project-owned routing/hooks.
 
-**Done when:** A single text edit opens promptly, while a large multi-file edit remains usable and does not flood the editor.
+**Done when:** Automated checks and live IDE checks pass all acceptance criteria; any unsupported environment is documented.
 
-## Feature 5 — Supported Codex workflows
+## Task 5 — Align documentation and packaging
 
-- [x] Implement a user-hook route for both CLI and IDE; preserve unrelated user hooks during install and removal.
-- [x] Select a private IDE bridge owned by a running process only for one matching local workspace; unit-test outside-workspace, stale-process, and ambiguous-window rejection.
-- [x] Document a workflow matrix for local IDE, integrated CLI, outside CLI, multiple windows, restart, and remote hosts in the README.
-- [x] Test Codex's VS Code extension in a local workspace: new file, existing file, multiple files, and repeated edits. (Live retested on September 24, 2026: a new `apply_patch` file opened as an active permanent tab; a later multi-file patch opened a second file and reused the first tab. With `preserveFocus` enabled, focus stayed in Codex. A Codex shell write also opened a tab, while a manual VS Code edit did not open another tab. An edit in `dist` stayed closed.)
-- [x] Test interactive Codex CLI launched in a standard VS Code integrated terminal with the same cases. (The user reported the remaining create, modify, multi-file, and repeat-edit CLI checks working.)
-- [x] Confirm that a Codex edit from a session outside VS Code does not open a tab. (On September 24, 2026, a text file created in `auto-open-smoke` did not open in VS Code; the test file was removed afterward.)
-- [x] Verify with real Codex processes that CLI sessions outside VS Code and edits outside the open workspace are ignored. Unit tests cover the gating and path checks.
-- [x] Test local multiple-window routing and restart. (An edit in this workspace opened only here while another window had `HGMemory` open; the user reported a successful edit in that other window too. A local IDE edit succeeded after a VS Code restart. Same-workspace IDE windows are intentionally ignored when routing is ambiguous.)
-- [ ] Test stale-descriptor recovery and remote SSH, WSL, and containers before claiming support for those environments.
-- [x] Confirm the installed IDE hook receives `VSCODE_PID` and delivers `apply_patch` edits.
-- [ ] Confirm plugin-only hook loading and payloads across supported Codex versions. (The shared user hook loaded in CLI 0.156.1; plugin hooks did not appear in `/hooks`.)
+- [x] Update the README, extension setting descriptions, setup output, and troubleshooting for IDE-only support.
+- [x] Remove CLI/CMD usage instructions and CLI-based live smoke checks; provide an IDE validation procedure.
+- [ ] Document supported direct edit tools, shell-write limitations, generated-file exclusions, window ambiguity, and tab-limit behavior.
+- [ ] Document the verified Codex VS Code extension version and required hook capabilities; retain a CLI dependency only if it is needed for installation tooling, without presenting CLI edits as supported.
+- [ ] Rebuild and install the local artifacts after validation; restart VS Code and review hook trust as required.
+- [ ] Keep remote SSH, WSL, containers, and public distribution outside confirmed support until separately verified.
 
-**Done when:** Both requested workflows pass the end-to-end acceptance tests on supported platforms.
-
-## Feature 6 — Quality and release
-
-- [x] Add unit tests for path parsing, validation, deduplication, exclusions, and burst handling.
-- [x] Add VS Code extension integration tests for opening behavior and focus preservation. (A real Extension Host verifies CLI and IDE hook routing, tab opening, pinning, deduplication, exclusions, unrelated writes, and the burst limit. The API stand-in checks both focus settings, and the live IDE check confirmed focus stayed in Codex when configured.)
-- [x] Add an end-to-end smoke test using a real Codex edit in each local workflow. (Real IDE and interactive CLI edits opened tabs during live testing. `npm run test:live` also launches an isolated Extension Host, runs a real `codex exec` edit, and verifies its permanent tab. IDE-agent invocation remains a manual live check.)
-- [x] Measure time from completed edit to visible tab and set an acceptable target for local workspaces. (The isolated Extension Host measures hook submission to active permanent tab with the normal 150 ms reveal delay; it observed 253–257 ms on September 24, 2026 and asserts a local target below 2 seconds.)
-- [x] Document local setup, editor settings, bridge privacy/security, and the limits of change attribution without a workspace watcher.
-- [x] Add focused troubleshooting steps for hook trust, bridge startup, stale descriptors, and missing tabs.
-- [x] Package the local VSIX and plugin and provide install and upgrade commands. (The local VSIX packages successfully and `setup_local.py` installs both components.)
-- [ ] Verify a clean install and upgrade on another machine, then publish the VS Code extension and Codex plugin if public distribution is intended.
-
-**Done when:** The release artifacts pass tests and a clean machine reproduces the expected behavior.
+**Done when:** Installation and documentation describe the same IDE-only behavior that was tested.
 
 ## Acceptance criteria
 
-1. With the companion extension and IDE user hook enabled, Codex creates `src/new.ts` from its VS Code extension; `src/new.ts` appears in an editor tab automatically.
-2. Codex CLI in an integrated VS Code terminal modifies `src/app.ts`; that file appears in an editor tab automatically.
-3. The edited file becomes the active permanent tab under the default setting.
-4. Editing a file manually or running an unrelated build does not open new tabs in the default mode.
-5. Multi-file edits obey the tab limit, exclusions, and deduplication rules.
-6. Events from another workspace/window cannot open files in the current window.
+1. Codex in the VS Code extension creates or directly modifies an eligible workspace file; its Git diff becomes visible in the owning window's active permanent diff tab by default within two seconds of the completed edit, comparing the index with current working-tree content. New untracked files compare against an empty baseline.
+2. A direct rename opens a diff for the existing destination against the original indexed path when available; a delete or failed edit opens no tab.
+3. Rust build/check/test, Python compile/test/package operations, Julia instantiate/precompile/test, and Lean Lake build/update/check operations run by Codex open no files from their side effects. This includes build outputs, caches, dependency or lockfile changes, and generated files elsewhere in the workspace. Subsequent direct edits to eligible `.rs`, `.py`, `.jl`, `.lean`, configuration, and lockfiles still open normally.
+4. A generic shell write does not trigger automatic opening under the explicit-edit-only policy. A later supported direct source edit still opens normally.
+5. Manual edits, background processes, Git operations, builds, and tests do not trigger automatic opening.
+6. Codex CLI/CMD edits open no tabs, whether launched outside VS Code or in its integrated terminal, even with inherited VS Code variables or a bridge descriptor.
+7. After switching tabs, a new direct edit to the same file reveals its diff again; duplicate delivery reuses the diff tab without consuming additional distinct-file budget.
+8. Multi-file edits have deterministic reveal behavior, honor exclusions and the tab limit, and expose overflow files through the existing command.
+9. Events cannot open files outside the owning workspace or in another window; ambiguous IDE routing is rejected with a diagnosable reason.
+10. Opening remains reliable after restart and workspace changes, and focus preservation works when enabled.
 
-## Source notes
-
-- [Codex hooks](https://learn.chatgpt.com/docs/hooks): `PostToolUse` covers supported local tools including `apply_patch` and shell execution; hook coverage has documented exceptions and non-managed hooks require trust review.
-- [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins): portable plugin manifests can bundle lifecycle hooks.
-- [Codex plugins](https://learn.chatgpt.com/docs/plugins): plugin availability varies by surface and version; the local user hook route provides IDE and CLI delivery independently of plugin hook loading.
-- [VS Code extension API](https://code.visualstudio.com/api/references/vscode-api): file watchers and `showTextDocument` are extension APIs; shell integration events are conditional on shell integration being active.
+11. Files without an available Git comparison are skipped with a concise diagnostic; an ordinary file tab is not opened as a fallback.

@@ -1,4 +1,4 @@
-"""Tests for the local two-component setup layout."""
+"""Tests for the local IDE-only setup layout."""
 
 import importlib.util
 import json
@@ -15,36 +15,67 @@ SPEC.loader.exec_module(setup_local)
 
 
 class SetupLocalTests(unittest.TestCase):
-    # Check the local catalog shape and copied plugin files.
+    # Check the standalone hook layout and extension installation.
     # Mock host commands to avoid changing VS Code or Codex settings.
     # Keep all generated files within a temporary directory.
 
     def test_install_layout_and_commands(self):
-        # Build the package layout and invoke the expected host commands.
+        # Install a standalone hook and extension without invoking the Codex CLI.
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "catalog"
+            root = Path(temporary) / "hook"
             commands = []
-            with patch.object(setup_local, "marketplace_root", return_value=root), \
+            with patch.object(setup_local, "hook_root", return_value=root), \
                  patch.object(setup_local, "ide_hooks_path", return_value=Path(temporary) / "hooks.json"), \
-                 patch.object(setup_local, "installed_marketplaces", return_value={}), \
                  patch.object(setup_local, "run", side_effect=lambda *args: commands.append(args)), \
                  patch.object(setup_local.shutil, "which", return_value="/usr/bin/tool"):
                 setup_local.install()
-            catalog = json.loads((root / ".agents/plugins/marketplace.json").read_text())
-            plugin = root / "plugins" / setup_local.NAME
-            manifest = json.loads((plugin / "plugin.json").read_text())
-            self.assertEqual(catalog["name"], setup_local.MARKETPLACE)
-            self.assertEqual(catalog["plugins"][0]["source"]["path"],
-                             "./plugins/codex-auto-open")
-            self.assertTrue((plugin / "hooks" / "report_edit.py").is_file())
-            self.assertTrue((plugin / ".codex-plugin" / "plugin.json").is_file())
-            self.assertTrue(manifest["version"].startswith("0.1.0+codex.local-"))
-            self.assertEqual(commands[-2],
-                             ("codex", "plugin", "add", "codex-auto-open@codex-auto-open-local"))
+            self.assertTrue((root / "report_edit.py").is_file())
             self.assertEqual(commands[-1][0:2], ("code", "--install-extension"))
-            hooks = json.loads((Path(temporary) / "hooks.json").read_text())
-            self.assertEqual(len(hooks["hooks"]["PreToolUse"]), 1)
-            self.assertIn("--ide", hooks["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
+            self.assertFalse(any(command[0] == "codex" for command in commands))
+            hooks = json.loads((Path(temporary) / "hooks.json").read_text())["hooks"]
+            self.assertEqual(hooks["PreToolUse"], [])
+            self.assertNotIn("Bash", hooks["PostToolUse"][0]["matcher"])
+            self.assertNotIn("--ide", hooks["PostToolUse"][0]["hooks"][0]["command"])
+
+    def test_upgrade_removes_legacy_snapshot_hooks(self):
+        # Replace obsolete project hooks while retaining unrelated pre-tool handlers.
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "hooks.json"
+            own = {"hooks": [{"statusMessage": setup_local.IDE_HOOK_MARKER, "command": "old"}]}
+            unrelated = {"matcher": "other", "hooks": [{"command": "true"}]}
+            path.write_text(json.dumps({"hooks": {"PreToolUse": [own, unrelated], "PostToolUse": [own]}}))
+            with patch.object(setup_local, "ide_hooks_path", return_value=path):
+                setup_local.update_ide_hooks(Path(temporary) / "report_edit.py")
+            hooks = json.loads(path.read_text())["hooks"]
+            self.assertEqual(hooks["PreToolUse"], [unrelated])
+            self.assertEqual(len(hooks["PostToolUse"]), 1)
+            self.assertNotIn("Bash", hooks["PostToolUse"][0]["matcher"])
+
+    def test_mixed_group_preserves_unrelated_handler(self):
+        # Keep unrelated handlers even when they share a group with this project's hook.
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "hooks.json"
+            unrelated = {"type": "command", "command": "true"}
+            path.write_text(json.dumps({"hooks": {"PostToolUse": [{"matcher": "*", "hooks": [
+                unrelated, {"statusMessage": setup_local.IDE_HOOK_MARKER, "command": "old"}]}]}}))
+            with patch.object(setup_local, "ide_hooks_path", return_value=path):
+                setup_local.update_ide_hooks()
+            self.assertEqual(json.loads(path.read_text())["hooks"]["PostToolUse"],
+                             [{"matcher": "*", "hooks": [unrelated]}])
+
+    def test_remove_standalone_hook(self):
+        # Remove only the installed hook and leave unrelated files untouched.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "report_edit.py").write_text("hook")
+            (root / "unrelated").write_text("keep")
+            with patch.object(setup_local, "hook_root", return_value=root), \
+                 patch.object(setup_local, "ide_hooks_path", return_value=root / "hooks.json"), \
+                 patch.object(setup_local, "run") as run:
+                setup_local.remove()
+            run.assert_called_once_with("code", "--uninstall-extension", setup_local.EXTENSION_ID)
+            self.assertFalse((root / "report_edit.py").exists())
+            self.assertTrue((root / "unrelated").exists())
 
     def test_ide_hooks_preserve_user_entries_and_remove_only_own(self):
         # Keep unrelated hook groups intact across installation and removal.

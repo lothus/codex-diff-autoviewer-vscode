@@ -1,4 +1,4 @@
-"""Tests for the CLI hook's path and bridge behavior."""
+"""Tests for the IDE hook's origin, path, and bridge behavior."""
 
 import importlib.util
 import json
@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "codex-plugin" / "hooks" / "report_edit.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "ide-hooks" / "report_edit.py"
 SPEC = importlib.util.spec_from_file_location("report_edit", SCRIPT)
 report_edit = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(report_edit)
@@ -55,65 +55,39 @@ class ReportEditTests(unittest.TestCase):
             "tool_response": {"isError": True},
         }), [])
 
-    def test_snapshot_classifies_changes(self):
-        # Detect writes and moves while omitting unchanged and deleted paths.
-        before = {"/w/a": [1, 1, 2, 3], "/w/b": [1, 2, 2, 3],
-                  "/w/gone": [1, 3, 2, 3]}
-        after = {"/w/a": [1, 1, 3, 4], "/w/moved": [1, 2, 2, 3],
-                 "/w/new": [1, 4, 1, 4]}
-        self.assertCountEqual(report_edit.snapshot_changes(before, after), [
-            ("/w/a", "modify"), ("/w/moved", "rename"), ("/w/new", "create")])
+    def test_shell_and_pre_tool_events_are_ignored(self):
+        # Reject command side effects without consulting or delivering to the bridge.
+        for event in ("PreToolUse", "PostToolUse"):
+            with self.subTest(event=event), patch.object(report_edit, "is_ide_session", return_value=True), \
+                    patch.object(report_edit, "read_json_input", return_value={
+                        "hook_event_name": event, "tool_name": "Bash",
+                        "tool_input": {"command": "cargo build"}, "tool_response": "Success.",
+                    }), patch.object(report_edit, "load_bridge") as bridge:
+                report_edit.main()
+                bridge.assert_not_called()
 
-    def test_bash_snapshot_is_bounded_and_scoped(self):
-        # Compare one Bash invocation and discard its private state afterward.
+    def test_session_origin_ignores_terminal_environment(self):
+        # Admit matching IDE metadata and reject CLI, unknown, and mismatched sessions.
         with tempfile.TemporaryDirectory() as root:
-            workspace = Path(root) / "workspace"
-            workspace.mkdir()
-            descriptor_path = Path(root) / "bridge.json"
-            descriptor_path.write_text("{}")
-            descriptor_path.chmod(0o600)
-            descriptor = {"workspaceFolders": [str(workspace)]}
-            hook = {"session_id": "session-1", "turn_id": "turn-1", "cwd": str(workspace),
-                    "tool_input": {"command": "write a file"}}
-            with patch.dict(os.environ, {"CODEX_AUTO_OPEN_BRIDGE_FILE": str(descriptor_path)}):
-                report_edit.save_snapshot(hook, descriptor)
-                target = workspace / "new.txt"
-                target.write_text("hello")
-                ignored = workspace / "dist"
-                ignored.mkdir()
-                (ignored / "bundle.js").write_text("generated")
-                self.assertEqual(report_edit.bash_changes(hook, descriptor),
-                                 [(str(target), "create")])
-                self.assertEqual(report_edit.bash_changes(hook, descriptor), [])
-
-    def test_bash_hook_reports_only_changes_during_matching_tool(self):
-        # Exercise the hook entry point across one Bash pre/post pair.
-        with tempfile.TemporaryDirectory() as root:
-            workspace = Path(root) / "workspace"
-            workspace.mkdir()
-            bridge_file = Path(root) / "bridge.json"
-            bridge_file.write_text("{}")
-            bridge_file.chmod(0o600)
-            descriptor = {"workspaceFolders": [str(workspace)]}
-            hook = {"tool_name": "Bash", "session_id": "session-1", "turn_id": "turn-1",
-                    "cwd": str(workspace), "tool_input": {"command": "write a file"}}
-            events = []
-            with patch.dict(os.environ, {"CODEX_AUTO_OPEN_BRIDGE_FILE": str(bridge_file)}), \
-                    patch.object(report_edit, "load_bridge", return_value=descriptor), \
-                    patch.object(report_edit, "read_json_input") as read_input, \
-                    patch.object(report_edit, "send_event", side_effect=lambda _bridge, event: events.append(event)):
-                read_input.return_value = {**hook, "hook_event_name": "PreToolUse"}
-                report_edit.main()
-                self.assertEqual(events, [])
-                created = workspace / "created.txt"
-                created.write_text("created")
-                read_input.return_value = {**hook, "hook_event_name": "PostToolUse", "tool_response": ""}
-                report_edit.main()
-                self.assertEqual([(event["path"], event["operation"]) for event in events],
-                                 [(str(created), "create")])
-                (workspace / "unrelated.txt").write_text("later")
-                report_edit.main()
-                self.assertEqual(len(events), 1)
+            transcript = Path(root) / "session.jsonl"
+            hook = {"session_id": "session-1", "transcript_path": str(transcript)}
+            metadata = {"id": "session-1", "source": "vscode", "originator": "codex_vscode"}
+            for source, originator, expected in (("vscode", "codex_vscode", True),
+                    ("cli", "codex_cli_rs", False), ("exec", "codex_exec", False),
+                    ("cli", "codex_vscode", False), ("vscode", "unknown", False)):
+                with self.subTest(source=source, originator=originator):
+                    transcript.write_text(json.dumps({"type": "session_meta", "payload": {
+                        **metadata, "source": source, "originator": originator}}) + "\n")
+                    with patch.dict(os.environ, {"VSCODE_PID": "123", "TERM_PROGRAM": "vscode",
+                            "CODEX_AUTO_OPEN_BRIDGE_FILE": "/tmp/bridge.json"}):
+                        self.assertEqual(report_edit.is_ide_session(hook), expected)
+            transcript.write_text(json.dumps({"type": "session_meta", "payload": metadata}))
+            self.assertFalse(report_edit.is_ide_session({**hook, "session_id": "another"}))
+            self.assertFalse(report_edit.is_ide_session({"session_id": "session-1"}))
+            transcript.write_text("not json")
+            self.assertFalse(report_edit.is_ide_session(hook))
+            transcript.write_text("x" * (report_edit.MAX_METADATA_BYTES + 1))
+            self.assertFalse(report_edit.is_ide_session(hook))
 
     def test_scope_rejects_external_symlink_and_nonfile(self):
         # Reject files outside the workspace even when reached through a link.
@@ -166,11 +140,14 @@ class ReportEditTests(unittest.TestCase):
             workspace.mkdir()
             target = workspace / "new.txt"
             target.write_text("hello")
-            descriptor = Path(root) / "bridge.json"
+            directory = Path(root) / "codex-auto-open-test"
+            directory.mkdir(mode=0o700)
+            descriptor = directory / "bridge.json"
             token = "t" * 32
             descriptor.write_text(json.dumps({
                 "version": 1,
                 "port": server.server_port,
+                "processId": os.getpid(),
                 "token": token,
                 "workspaceFolders": [str(workspace)],
             }))
@@ -184,27 +161,36 @@ class ReportEditTests(unittest.TestCase):
                 "session_id": "session-1",
                 "turn_id": "turn-1",
             }
+            transcript = Path(root) / "session.jsonl"
+            hook["transcript_path"] = str(transcript)
             env = os.environ.copy()
+            env["TMPDIR"] = root
             env["CODEX_AUTO_OPEN_BRIDGE_FILE"] = str(descriptor)
-            for args in ((), ("--ide",)):
-                with self.subTest(args=args):
+            env["VSCODE_PID"] = str(os.getpid())
+            env["TERM_PROGRAM"] = "vscode"
+            server.timeout = 0.3
+            for source, originator in (("cli", "codex_cli_rs"), ("exec", "codex_exec"),
+                                       ("vscode", "codex_vscode")):
+                with self.subTest(source=source):
+                    transcript.write_text(json.dumps({"type": "session_meta", "payload": {
+                        "id": "session-1", "source": source, "originator": originator}}) + "\n")
                     thread = threading.Thread(target=server.handle_request, daemon=True)
                     thread.start()
                     result = subprocess.run(
-                        [sys.executable, str(SCRIPT), *args], input=json.dumps(hook), text=True,
+                        [sys.executable, str(SCRIPT)], input=json.dumps(hook), text=True,
                         capture_output=True, env=env, timeout=3, check=True,
                     )
                     thread.join(timeout=1)
                     self.assertEqual(result.stdout, "")
                     self.assertEqual(result.stderr, "")
-                    route, authorization, event = received[-1]
-                    self.assertEqual(route, "/v1/events")
-                    self.assertEqual(authorization, f"Bearer {token}")
-                    self.assertEqual(event["path"], str(target))
-                    self.assertEqual(event["operation"], "create")
-                    self.assertEqual(event["sessionId"], "session-1")
-                    self.assertEqual(event["turnId"], "turn-1")
-            self.assertEqual(len(received), 2)
+                    self.assertEqual(len(received), 1 if source == "vscode" else 0)
+            route, authorization, event = received[0]
+            self.assertEqual(route, "/v1/events")
+            self.assertEqual(authorization, f"Bearer {token}")
+            self.assertEqual(event["path"], str(target))
+            self.assertEqual(event["operation"], "create")
+            self.assertEqual(event["sessionId"], "session-1")
+            self.assertEqual(event["turnId"], "turn-1")
 
     def test_rejects_public_descriptor(self):
         # Reject a bridge descriptor readable by other local users.
@@ -215,10 +201,9 @@ class ReportEditTests(unittest.TestCase):
                 "workspaceFolders": [root],
             }))
             descriptor.chmod(0o644)
-            with patch.dict(os.environ, {"CODEX_AUTO_OPEN_BRIDGE_FILE": str(descriptor)}):
-                self.assertIsNone(report_edit.load_bridge())
+            self.assertIsNone(report_edit.read_bridge(descriptor))
 
-    def test_ide_bridge_requires_vscode_and_one_matching_window(self):
+    def test_ide_bridge_requires_one_matching_live_window(self):
         # Discover a private IDE bridge only when its workspace match is unique.
         with tempfile.TemporaryDirectory() as root:
             base = Path(root)
@@ -240,42 +225,14 @@ class ReportEditTests(unittest.TestCase):
             first = descriptor(1)
             with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
                     patch.dict(os.environ, {"VSCODE_PID": "123"}, clear=True):
-                self.assertIsNone(report_edit.load_bridge(str(workspace), False))
-                self.assertIsNone(report_edit.load_bridge(str(outside), True))
-                self.assertEqual(report_edit.load_bridge(str(workspace), True)["descriptorPath"],
+                self.assertIsNone(report_edit.load_bridge(str(outside)))
+                self.assertEqual(report_edit.load_bridge(str(workspace))["descriptorPath"],
                                  str(first))
                 descriptor(0, 999999999)
-                self.assertEqual(report_edit.load_bridge(str(workspace), True)["descriptorPath"],
+                self.assertEqual(report_edit.load_bridge(str(workspace))["descriptorPath"],
                                  str(first))
                 descriptor(2)
-                self.assertIsNone(report_edit.load_bridge(str(workspace), True))
-            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
-                    patch.dict(os.environ, {"TERM_PROGRAM": "vscode"}, clear=True):
-                self.assertIsNone(report_edit.load_bridge(str(workspace), False))
-            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
-                    patch.dict(os.environ, {}, clear=True):
-                self.assertIsNone(report_edit.load_bridge(str(workspace), True))
-
-    def test_terminal_bridge_selects_unique_workspace(self):
-        # Use VS Code's terminal marker only when one live private bridge matches.
-        with tempfile.TemporaryDirectory() as root:
-            workspace = Path(root) / "workspace"
-            workspace.mkdir()
-            directory = Path(root) / "codex-auto-open-one"
-            directory.mkdir(mode=0o700)
-            descriptor = directory / "bridge.json"
-            descriptor.write_text(json.dumps({
-                "version": 1, "port": 1234, "token": "t" * 32,
-                "processId": os.getpid(), "workspaceFolders": [str(workspace)],
-            }))
-            descriptor.chmod(0o600)
-            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
-                    patch.dict(os.environ, {"TERM_PROGRAM": "vscode"}, clear=True):
-                self.assertEqual(report_edit.load_bridge(str(workspace), False)["descriptorPath"],
-                                 str(descriptor))
-            with patch.object(report_edit.tempfile, "gettempdir", return_value=root), \
-                    patch.dict(os.environ, {"TERM_PROGRAM": "other"}, clear=True):
-                self.assertIsNone(report_edit.load_bridge(str(workspace), False))
+                self.assertIsNone(report_edit.load_bridge(str(workspace)))
 
 
 if __name__ == "__main__":
